@@ -1,0 +1,41 @@
+minimum_cumulusci_version: "3.90.0"
+project:
+  name: cci-tasks
+  package:
+    name: cci-tasks
+    api_version: "61.0"
+  git:
+    default_branch: "main"
+  source_format: sfdx
+
+tasks:
+  install_package:
+    class_path: tasks.packaging.installPackage.InstallPackageDeps
+  get_dependencies:
+    class_path: tasks.packaging.getDependencies.GetDependencies
+
+  idp_connected_app:
+    class_path: tasks.identity.idpDeploy.deployMetadata
+  sp_post_deploy:
+    class_path: tasks.identity.spDeploy.deploySSO
+  clean_test_results:
+    class_path: cumulusci.tasks.command.Command
+    options: 
+      command: rm -rf robot/sso/results/*
+  retrieve_cert:
+    class_path: tasks.identity.spDeploy.RetrieveCert
+
+  robot:
+    options:
+      suites: robot/cci-tasks/tests
+      options:
+        outputdir: robot/cci-tasks/results
+
+  robot_testdoc:
+    options:
+      path: robot/cci-tasks/tests
+      output: robot/cci-tasks/doc/cci-tasks_tests.html
+
+  run_tests:
+    options:
+      required_org_code_coverage_percent: 75

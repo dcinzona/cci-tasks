@@ -1,0 +1,15 @@
+- plugin: gt.interactiveChoice
+
+- var: choiceTestOptions
+  value: Option 1, Option 2, Option 3
+
+- object: Account
+  count: 2
+  fields:
+    __choiceTitle: Testing account choice
+    choice_test: ${{ interactiveChoice.singleSelect(title=__choiceTitle,options=choiceTestOptions) }}
+
+
+- object: Contact
+  fields:
+    Contact_Choice: ${{ interactiveChoice.singleSelect(title='Select a contact choice',options=('Option 1','Opt 2','3')) }}

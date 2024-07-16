@@ -1,0 +1,4 @@
+python-dotenv
+cumulusci
+flake8
+black
