@@ -92,7 +92,7 @@ class BackupData(BaseSalesforceApiTask):
             self.org_config,
             include_counts=True,
             included_objects=extractable_data,
-            filters=[Filters.queryable],
+            filters=[Filters.queryable, Filters.populated],
         ) as schema, Dataset(
             self.name,
             self.project_config,
@@ -213,6 +213,18 @@ class ExtractBackup(ExtractData):
 
     task_options = extract_data_options
 
+    def _run_task(self):
+        self._init_mapping()
+        with self._init_db():
+            for mapping in self.mapping.values():
+                soql = self._soql_for_mapping(mapping)
+                self._run_query(soql, mapping)
+
+            self._map_autopks()
+
+            if self.options.get("sql_path"):
+                self._sqlite_dump()
+
     def _init_mapping(self):
         """Load a YAML mapping file."""
         mapping_file_path = self.options["mapping"]
@@ -231,6 +243,14 @@ class ExtractBackup(ExtractData):
             drop_missing=self.options["drop_missing_schema"],
             org_has_person_accounts_enabled=self.org_config.is_person_accounts_enabled,
         )
+    
+    def _map_autopks(self):
+        # Convert Salesforce Ids to autopks
+        for m in self.mapping.values():
+            lookup_keys = list(m.lookups.keys())
+            if not m.get_oid_as_pk():
+                if lookup_keys:
+                    self._convert_lookups_to_id(m, lookup_keys)
 
     # def _run_query(self, soql, mapping):
     #     """Run a query and write the results to a CSV file."""

@@ -2,6 +2,7 @@ Insert Accounts:
     sf_object: Account
     table: Account
     fields:
+        Id: sf_id
         Name: Name
         Description: Description
         BillingStreet: BillingStreet
@@ -19,12 +20,17 @@ Insert Accounts:
         Website: Website
         NumberOfEmployees: NumberOfEmployees
         AccountNumber: AccountNumber
-        Site: Site
         Type: Type
+    lookups:
+        ParentId:
+            table: 
+            - Account
+            after: Insert Accounts
 Insert Contacts:
     sf_object: Contact
     table: Contact
     fields:
+        Id: sf_id
         Salutation: Salutation
         FirstName: FirstName
         LastName: LastName

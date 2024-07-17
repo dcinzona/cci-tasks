@@ -76,9 +76,11 @@ class GenerateFullMapping(GenerateMapping):
             # Check if it's safe for us to strip the namespace from this object
             stripped_obj = strip_namespace(orig_obj)
             obj = stripped_obj if stripped_obj not in stack else orig_obj
-            key = f"Extract {obj}"
+            key = f"Insert {obj}"
             self.mapping[key] = {}
             self.mapping[key]["sf_object"] = obj
+            self.mapping[key]["table"] = obj
+            self.mapping[key]["fields"] = {}
             fields = []
             lookups = []
             for field in self.simple_schema[orig_obj].values():
@@ -95,7 +97,12 @@ class GenerateFullMapping(GenerateMapping):
                     for f in fields
                 ]
                 fields_stripped.sort()
-                self.mapping[key]["fields"] = fields_stripped
+                for field in fields_stripped:
+                    fieldName = field
+                    if field == "Id":
+                        fieldName = "sf_id"
+                    self.mapping[key]["fields"][field] = fieldName
+                # self.mapping[key]["fields"] = fields_stripped
             if lookups:
                 lookups.sort()
                 self.mapping[key]["lookups"] = {}

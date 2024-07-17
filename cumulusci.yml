@@ -18,6 +18,11 @@ tasks:
     group: Data Operations
     options: 
       extraction_definition: datasets/extract_accounts.yml
+  extract_data_with_mapping:
+    class_path: tasks.data_ops.backup_data.ExtractData
+    group: Data Operations
+    options: 
+      mapping: datasets/mapping.yml
 
   install_package:
     class_path: tasks.packaging.installPackage.InstallPackageDeps
