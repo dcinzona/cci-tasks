@@ -12,6 +12,12 @@ class GenerateFullMapping(GenerateMapping):
 
     task_options = generate_options
 
+    def _init_options(self, kwargs):
+        super()._init_options(kwargs)
+        self.options["ignore"] = self.options.get("ignore", [])
+        self.options["strip_namespace"] = self.options.get("strip_namespace", False)
+        self.options["break_cycles"] = self.options.get("break_cycles", 'auto')
+
     def _run_task(self):
         self.logger.info("Collecting sObject information")
         with get_org_schema(self.sf, self.org_config) as org_schema:
@@ -38,9 +44,16 @@ class GenerateFullMapping(GenerateMapping):
         self.refs = defaultdict(lambda: defaultdict(dict))
         for obj in self.mapping_objects:
             self.simple_schema[obj] = {}
-
+            compoundFieldNames = []
             for field in org_schema[obj]["fields"].values():
-                if self._is_field_mappable(obj, field):
+                compoundFieldName = field["compoundFieldName"]
+                if compoundFieldName and compoundFieldName != "Name":
+                    self.logger.info(f"{obj} Compound field: {compoundFieldName}")
+                    compoundFieldNames.append(compoundFieldName)  # Add to the list of compound fields
+
+            self.logger.info(f"{obj} compoundFieldNames: {compoundFieldNames}")
+            for field in org_schema[obj]["fields"].values():
+                if self._is_field_mappable(obj, field, set(compoundFieldNames)):
                     self.simple_schema[obj][field["name"]] = field
 
                     if field["type"] == "reference":
@@ -76,11 +89,10 @@ class GenerateFullMapping(GenerateMapping):
             # Check if it's safe for us to strip the namespace from this object
             stripped_obj = strip_namespace(orig_obj)
             obj = stripped_obj if stripped_obj not in stack else orig_obj
-            key = f"Insert {obj}"
+            key = f"Extract {obj}"
             self.mapping[key] = {}
             self.mapping[key]["sf_object"] = obj
             self.mapping[key]["table"] = obj
-            self.mapping[key]["fields"] = {}
             fields = []
             lookups = []
             for field in self.simple_schema[orig_obj].values():
@@ -97,12 +109,7 @@ class GenerateFullMapping(GenerateMapping):
                     for f in fields
                 ]
                 fields_stripped.sort()
-                for field in fields_stripped:
-                    fieldName = field
-                    if field == "Id":
-                        fieldName = "sf_id"
-                    self.mapping[key]["fields"][field] = fieldName
-                # self.mapping[key]["fields"] = fields_stripped
+                self.mapping[key]["fields"] = fields_stripped
             if lookups:
                 lookups.sort()
                 self.mapping[key]["lookups"] = {}
@@ -140,15 +147,19 @@ class GenerateFullMapping(GenerateMapping):
                             "table": stripped_references
                         }
 
-    def _is_field_mappable(self, obj, field):
+    def _is_field_mappable(self, obj, field, compoundFieldNames: set = ()):
         """True if this field is one we can map, meaning it's not ignored,
         it's createable by the Bulk API, it's not a deprecated field,
         and it's not a type of reference we can't handle without special
         configuration (self-lookup or reference to objects not included
         in this operation)."""
+        # if obj == "Account":
+        #     self.logger.info(f"Checking field {field}")
         return not any(
             [
-                field["name"] == "Id",  # Omit Id fields for auto-pks
+                # field["name"] == "Id",  # Omit Id fields for auto-pks
+                field["name"] in compoundFieldNames 
+                and field["name"] != "Name",  # Compound fields
                 f"{obj}.{field['name']}" in self.options["ignore"],  # User-ignored list
                 "(Deprecated)" in field["label"],  # Deprecated managed fields
                 field["type"] == "base64",  # No Bulk API support for base64 blob fields
@@ -157,8 +168,3 @@ class GenerateFullMapping(GenerateMapping):
                 and not self._are_lookup_targets_in_operation(field),
             ]
         )
-
-    # def _is_queryable(self, field):
-    #     """True if the field is either database-level required or a master-detail
-    #     relationship field."""
-    #     return True  # field["queryable"]
