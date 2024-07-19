@@ -69,6 +69,7 @@ class BackupData(BaseSalesforceApiTask):
 
     always_include_objects = ["User", "Group"]
     timestamp = int(time.time())
+    include_setup_data = False
 
     def _init_options(self, kwargs):
         super()._init_options(kwargs)
@@ -112,28 +113,31 @@ class BackupData(BaseSalesforceApiTask):
             if not dataset.path.exists():
                 dataset.create()
 
+            self.logger.info(f"Extracting data to {dataset.path}")
+
             if extraction_definition := self.options.get("extraction_definition"):
                 extraction_definition = Path(extraction_definition)
                 if not extraction_definition.exists():
                     extraction_definition = dataset.extract_file
             else:
                 extraction_definition = dataset.extract_file
-            
+
+            self.logger.info(f"...Processing extraction definition: {extraction_definition}")
             self.decls = ExtractRulesFile.parse_extract(extraction_definition)
             mappingDict = self.create_extract_mapping_file_from_declarations(
                 list(self.decls.values()), schema, []
             )
-
-            self.logger.info(f"Extracted Mapping: {mappingDict}")
-
             sobjectArray = list(mappingDict.keys())  # + self.always_include_objects
+            self.logger.info(f"Identified {len(sobjectArray)} objects to process")
             sobjectListString = ",".join(list(set(sobjectArray)))
             exclude = ",".join(OPT_IN_ONLY)
 
+            self.logger.info("Getting related objects and building mapping file for extract...")
             mappingTask = _make_task(
                 GenerateFullMapping, 
                 project_config=self.project_config, 
                 org_config=self.org_config,
+                logger=self.logger,
                 path=dataset.mapping_file,
                 include=sobjectListString,
                 ignore=exclude,
@@ -143,17 +147,18 @@ class BackupData(BaseSalesforceApiTask):
             self.logger.info(f"Mapping saved to : {dataset.mapping_file}")
             self.mapping = MappingSteps.parse_from_yaml(dataset.mapping_file)
             if not self.preview:
+                self.logger.info(f"Extracting data...")
                 for mapping in self.mapping.values():
                     sf_object = mapping["sf_object"]
                     self.logger.info(f"Extracting data for {sf_object}")
                     soql = self._soql_for_mapping(mapping)
-                    self.logger.debug(f"SOQL: {soql}")
+                    # self.logger.debug(f"SOQL: {soql}")
                     self._run_query(soql, mapping)
 
     def _get_extractable_objects(self):
         not_countable = NOT_COUNTABLE + ("NetworkUserHistoryRecent", "OutgoingEmail", "OutgoingEmailRelation")
         extractable_data = []
-        
+
         if self.include_setup_data:
             sobjectList = [f for f in self.sf.describe()["sobjects"] 
                            if f["queryable"] is True
@@ -163,6 +168,7 @@ class BackupData(BaseSalesforceApiTask):
                            and f["name"] not in not_countable
                            ]            
             extractable_data = [f["name"] for f in sobjectList]
+
         else:
             from tasks.data_ops.get_sobjects import GetSObjects
             task = _make_task(GetSObjects, project_config=self.project_config, org_config=self.org_config)
@@ -192,6 +198,7 @@ class BackupData(BaseSalesforceApiTask):
             query=soql,
         )
         step.query()
+        # self.logger.info(f"Querying {mapping['sf_object']} with SOQL: {soql}")
 
         if step.job_result.status is DataOperationStatus.SUCCESS:
             if step.job_result.records_processed:
@@ -245,7 +252,7 @@ class BackupData(BaseSalesforceApiTask):
             )
         
         simplified_decls = flatten_declarations(decls, schema, opt_in_only)
-        self.logger.info(f"Flattened Declarations: {simplified_decls}")
+        # self.logger.info(f"Flattened Declarations: {simplified_decls}")
         simplified_decls = classify_and_filter_lookups(simplified_decls, schema)
         mappings = [self._mapping_decl_for_extract_decl(decl) for decl in simplified_decls]
         return dict(pair for pair in mappings if pair)
