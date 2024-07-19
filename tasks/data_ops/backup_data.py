@@ -61,6 +61,10 @@ class BackupData(BaseSalesforceApiTask):
             "description": "Preview the data extraction without writing to disk",
             "required": False,
         },
+        "include_setup_data": {
+            "description": "Include setup data like ApexClasses. Default is False",
+            "required": False,
+        },
     }
 
     always_include_objects = ["User", "Group"]
@@ -76,6 +80,8 @@ class BackupData(BaseSalesforceApiTask):
             self.name = self.options['dataset']
         else:
             self.name = self.options['dataset'] = "default"
+        if "include_setup_data" in self.options:
+            self.include_setup_data = bool(self.options["include_setup_data"])
 
     def datasets_path(self) -> Path:
         return Path(self.project_config.repo_root or "") / "datasets" / self.name
@@ -85,17 +91,7 @@ class BackupData(BaseSalesforceApiTask):
 
     def _run_task(self):
 
-        not_countable = NOT_COUNTABLE + ("NetworkUserHistoryRecent", "OutgoingEmail", "OutgoingEmailRelation")
-
-        sobjectList = [f for f in self.sf.describe()["sobjects"] 
-                       if f["queryable"] is True
-                       and f["createable"] is True
-                       and f["keyPrefix"] is not None
-                       and f["associateEntityType"] is None
-                       and f["name"] not in not_countable
-                       ]
-        extractable_data = [f["name"] for f in sobjectList]
-        extractable_data = list(set(extractable_data + self.always_include_objects))
+        extractable_data = self._get_extractable_objects()
         opt_in_only = [f["name"] for f in self.tooling.describe()["sobjects"] if f["name"] not in extractable_data]  # type: ignore
         opt_in_only += OPT_IN_ONLY
         
@@ -147,16 +143,6 @@ class BackupData(BaseSalesforceApiTask):
             self.logger.info(f"Mapping saved to : {dataset.mapping_file}")
             self.mapping = MappingSteps.parse_from_yaml(dataset.mapping_file)
             if not self.preview:
-                # validate_and_inject_mapping(
-                #     mapping=self.mapping,
-                #     sf=self.sf,
-                #     namespace=self.project_config.project__package__namespace,
-                #     data_operation=DataOperationType.QUERY,
-                #     inject_namespaces=False,
-                #     drop_missing=False,
-                #     org_has_person_accounts_enabled=self.org_config.is_person_accounts_enabled,
-                # )
-                # self._get_data_from_org(dataset)
                 for mapping in self.mapping.values():
                     sf_object = mapping["sf_object"]
                     self.logger.info(f"Extracting data for {sf_object}")
@@ -164,16 +150,26 @@ class BackupData(BaseSalesforceApiTask):
                     self.logger.debug(f"SOQL: {soql}")
                     self._run_query(soql, mapping)
 
-                    # soqlQueryTask = _make_task(
-                    #     SOQLQuery,
-                    #     project_config=dataset.project_config,
-                    #     org_config=dataset.org_config,
-                    #     object=sf_object,
-                    #     query=self._soql_for_mapping(mapping),
-                    #     result_file=dataset.path / f"{sf_object}.csv",
-                    #     )
-                    # soqlQueryTask.logger = self.logger
-                    # soqlQueryTask()
+    def _get_extractable_objects(self):
+        not_countable = NOT_COUNTABLE + ("NetworkUserHistoryRecent", "OutgoingEmail", "OutgoingEmailRelation")
+        extractable_data = []
+        
+        if self.include_setup_data:
+            sobjectList = [f for f in self.sf.describe()["sobjects"] 
+                           if f["queryable"] is True
+                           and f["createable"] is True
+                           and f["keyPrefix"] is not None
+                           and f["associateEntityType"] is None
+                           and f["name"] not in not_countable
+                           ]            
+            extractable_data = [f["name"] for f in sobjectList]
+        else:
+            from tasks.data_ops.get_sobjects import GetSObjects
+            task = _make_task(GetSObjects, project_config=self.project_config, org_config=self.org_config)
+            extractable_data = task()
+            extractable_data = [o for o in set(extractable_data + self.always_include_objects) if o not in not_countable]
+
+        return extractable_data
 
     def _run_query(self, soql, mapping):
         """Execute a Bulk or REST API query job and store the results."""
@@ -195,8 +191,6 @@ class BackupData(BaseSalesforceApiTask):
             context=self,
             query=soql,
         )
-
-        # self.logger.info(f"Extracting data for sObject {mapping['sf_object']}")
         step.query()
 
         if step.job_result.status is DataOperationStatus.SUCCESS:
@@ -216,22 +210,6 @@ class BackupData(BaseSalesforceApiTask):
         writer = csv.writer(open(csvPath, "a"), quoting=csv.QUOTE_ALL)
         for row in record_iterator:
             writer.writerow(row)
-        # with open(csvPath, "a") as f:
-        #     for row in record_iterator:
-        #         f.write(",".join(row))
-        #         f.write("\n")
-
-    def _get_data_from_org(self, dataset: Dataset):
-        self.logger.info(f"Extracting data to {dataset.path}")
-        # from tasks.data_ops.backup_data import ExtractBackup
-        # extractTask = _make_task(
-        #     ExtractBackup,
-        #     project_config=dataset.project_config,
-        #     org_config=dataset.org_config,
-        #     mapping=dataset.mapping_file,
-        #     sql_path=dataset.path / "data.sql",
-        #     )
-        # extractTask()
         
     def _soql_for_mapping(self, mapping):
         """Return a SOQL query suitable for extracting data for this mapping."""
@@ -353,7 +331,3 @@ class ExtractBackup(ExtractData):
                 if lookup_keys:
                     self._convert_lookups_to_id(m, lookup_keys)
 
-    # def _run_query(self, soql, mapping):
-    #     """Run a query and write the results to a CSV file."""
-    #     self.logger.info(f"Running query: {soql}")
-    #     super()._run_query(soql, mapping)

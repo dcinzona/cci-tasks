@@ -9,6 +9,9 @@ project:
   source_format: sfdx
 
 tasks:
+  
+  play:
+    class_path: tasks.playground.Playground
 
   generate_dataset_mapping:
     class_path: tasks.data_ops.generate_full_mapping.GenerateFullMapping

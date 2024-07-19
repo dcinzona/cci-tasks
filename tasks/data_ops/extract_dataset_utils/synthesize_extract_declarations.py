@@ -17,25 +17,15 @@ def flatten_declarations(
     schema: Schema,
     opt_in_only: T.Sequence[str] = (),
 ) -> T.List[SimplifiedExtractDeclaration]:
-    """Convert short-form, abstract Extract declarations like this:
 
-    OBJECTS(CUSTOM):
-        fields: FIELDS(REQUIRED)
+    # pretend all fields are required on create
 
-    to concrete ones like this (a "Simplified" declaration):
-
-    Custom__c:
-        fields:
-            - Name
-            - CustomField__c
-    Custom2__c:
-        fields:
-            - Name
-            - CustomField2__c
-
-    Also detects dependencies between tables and pulls in required fields
-    from referenced tables recursively.
-    """
+    for obj in schema.keys():
+        for field in schema[obj]["fields"].values():
+            field.defaultValue = None
+            field.nillable = False
+            field.defaultedOnCreate = False
+            field.createable = True
     # assert schema.includes_counts, "Schema object was not set up with `includes_counts`"
     simplified_declarations = _simplify_sfobject_declarations(
         declarations, schema, opt_in_only
@@ -98,9 +88,9 @@ def _merge_group_declarations_with_simple_declarations(
             # hard_banned = any(
             #     re.match(pat, decl.sf_object, re.IGNORECASE) for pat in NOT_EXTRACTABLE
             # )
-            # opted_out = decl.sf_object in opt_in_only
-            # if not (already_specified or hard_banned or opted_out):
-            #     simple_declarations.append(decl)
+            opted_out = decl.sf_object in opt_in_only
+            if not (already_specified or opted_out):
+                simple_declarations.append(decl)
 
     return simple_declarations
 
