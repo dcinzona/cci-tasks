@@ -31,29 +31,28 @@ class GenerateFullMapping(GenerateMapping):
             yaml.dump(self.mapping, f, sort_keys=False)
 
     def _simplify_schema(self, org_schema):
-        """Simplify and filter schema, including field details and interobject
-        references, into self.simple_schema and self.refs"""
+        """Override to exclude compound fields and include Ids
 
-        # Now, find all the fields we need to include.
-        # For custom objects, we include all custom fields. This includes custom objects
-        # that our package doesn't own.
-        # For standard objects, we include all custom fields, all required standard fields,
-        # and master-detail relationships. Required means createable and not nillable.
-        # In all cases, ensure that RecordTypeId is included if and only if there are Record Types
+        Simplify and filter schema, including field details and interobject
+        references, into self.simple_schema and self.refs"""
         self.simple_schema = {}
         self.refs = defaultdict(lambda: defaultdict(dict))
         for obj in self.mapping_objects:
             self.simple_schema[obj] = {}
-            compoundFieldNames = []
-            for field in org_schema[obj]["fields"].values():
-                compoundFieldName = field["compoundFieldName"]
-                if compoundFieldName and compoundFieldName != "Name":
-                    self.logger.info(f"{obj} Compound field: {compoundFieldName}")
-                    compoundFieldNames.append(compoundFieldName)  # Add to the list of compound fields
+            compoundFields = set([f"{c}" for c in 
+                                 [field["compoundFieldName"] for field in org_schema[obj]["fields"].values() 
+                                  if field["compoundFieldName"] 
+                                  and field["compoundFieldName"] != "Name"
+                                  ]])
+            # for field in org_schema[obj]["fields"].values():
+            #     compoundFieldName = field["compoundFieldName"]
+            #     if compoundFieldName and compoundFieldName != "Name":
+            #         compoundFieldNames.append(compoundFieldName)  # Add to the list of compound fields
+            if len(list(compoundFields)) > 0:
+                self.logger.info(f"Compound fields ignored in {obj}: {[f for f in compoundFields]}")
 
-            self.logger.info(f"{obj} compoundFieldNames: {compoundFieldNames}")
             for field in org_schema[obj]["fields"].values():
-                if self._is_field_mappable(obj, field, set(compoundFieldNames)):
+                if self._is_field_mappable(obj, field, compoundFields):
                     self.simple_schema[obj][field["name"]] = field
 
                     if field["type"] == "reference":
@@ -148,22 +147,14 @@ class GenerateFullMapping(GenerateMapping):
                         }
 
     def _is_field_mappable(self, obj, field, compoundFieldNames: set = ()):
-        """True if this field is one we can map, meaning it's not ignored,
-        it's createable by the Bulk API, it's not a deprecated field,
-        and it's not a type of reference we can't handle without special
-        configuration (self-lookup or reference to objects not included
-        in this operation)."""
-        # if obj == "Account":
-        #     self.logger.info(f"Checking field {field}")
+        """Override to exclude compound fields and include Id."""
         return not any(
             [
-                # field["name"] == "Id",  # Omit Id fields for auto-pks
                 field["name"] in compoundFieldNames 
                 and field["name"] != "Name",  # Compound fields
                 f"{obj}.{field['name']}" in self.options["ignore"],  # User-ignored list
                 "(Deprecated)" in field["label"],  # Deprecated managed fields
                 field["type"] == "base64",  # No Bulk API support for base64 blob fields
-                # not field["createable"],  # Non-writeable fields
                 field["type"] == "reference"  # Outside lookups
                 and not self._are_lookup_targets_in_operation(field),
             ]

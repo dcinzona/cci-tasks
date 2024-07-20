@@ -3,9 +3,9 @@ from pathlib import Path
 import csv
 import time
 import typing as T
-# from tempfile import TemporaryDirectory
+from tempfile import TemporaryDirectory
 
-from cumulusci.core.datasets import Dataset, _make_task
+from cumulusci.core.datasets import _make_task  # , Dataset
 from cumulusci.tasks.bulkdata.extract import ExtractData
 from cumulusci.tasks.salesforce.SOQLQuery import SOQLQuery
 from tasks.data_ops.generate_full_mapping import GenerateFullMapping
@@ -25,6 +25,7 @@ from cumulusci.tasks.bulkdata.mapping_parser import validate_and_inject_mapping
 from cumulusci.tasks.bulkdata.step import DataOperationType
 from cumulusci.core.exceptions import TaskOptionsError
 from cumulusci.salesforce_api.org_schema import Schema
+from cumulusci.core.utils import process_bool_arg, process_list_arg
 
 from cumulusci.tasks.bulkdata.step import DataOperationStatus, get_query_operation
 from cumulusci.tasks.bulkdata.mapping_parser import MappingStep as CumulusciMappingStep
@@ -65,95 +66,154 @@ class BackupData(BaseSalesforceApiTask):
             "description": "Include setup data like ApexClasses. Default is False",
             "required": False,
         },
+        "sobjects": {
+            "description": "A comma separated list of sobjects to extract.  Overrides the extraction definition and includes all fields",
+            "required": False,
+            },
+        "populated_only": {
+            "description": "Only include objects with data",
+            "required": False,
+        },
     }
 
     always_include_objects = ["User", "Group"]
-    timestamp = int(time.time())
-    include_setup_data = False
+    unix_time = int(time.time())
 
     def _init_options(self, kwargs):
         super()._init_options(kwargs)
-        if "preview" in self.options:
-            self.preview = True
-        else:
-            self.preview = False
-        if "dataset" in self.options:
-            self.name = self.options['dataset']
-        else:
-            self.name = self.options['dataset'] = "default"
-        if "include_setup_data" in self.options:
-            self.include_setup_data = bool(self.options["include_setup_data"])
+        self.name = self.options.get("dataset", "default")
+        self.preview = process_bool_arg(self.options.get("preview"))
+        self.include_setup_data = process_bool_arg(self.options.get("include_setup_data"))
+        self.sobjects = process_list_arg(self.options.get("sobjects"))
+        self.root_dir = Path(self.project_config.repo_root or "")
+        self.populated_only = process_bool_arg(self.options.get("populated_only"))
+        self.extraction_definition = self.extract_file
 
-    def datasets_path(self) -> Path:
-        return Path(self.project_config.repo_root or "") / "datasets" / self.name
+    @property
+    def path(self) -> Path:
+        return self.root_dir / "datasets" / self.name
+    
+    @property
+    def data_path(self) -> Path:
+        return self.path / f"{self.unix_time}"
 
+    @property
     def extract_file(self) -> Path:
-        return self.path / f"{self.name}.extract.yml"
+        return self.path / f"{self.unix_time}-{self.name}.extract.yml"
+    
+    @property
+    def mapping_file(self) -> Path:
+        return self.path / f"{self.unix_time}" / f"_{self.unix_time}.mapping.yml"
+    
+    def _csv_path(self, sobject):
+        return self.data_path / f"{sobject}.csv"
 
     def _run_task(self):
+        if self.preview:
+            with TemporaryDirectory() as tempdir:
+                self.root_dir = Path(tempdir)
+                self._run_exectute()
+        else:
+            self._run_exectute()
+        list_todo(self.logger)
+
+    def _run_exectute(self):
 
         extractable_data = self._get_extractable_objects()
-        opt_in_only = [f["name"] for f in self.tooling.describe()["sobjects"] if f["name"] not in extractable_data]  # type: ignore
-        opt_in_only += OPT_IN_ONLY
+        if self.include_setup_data:
+            opt_in_only = []
+        else:
+            opt_in_only = [f["name"] for f in self.tooling.describe()["sobjects"] if f["name"] not in extractable_data]  # type: ignore
+            opt_in_only += OPT_IN_ONLY + ["ScratchOrgInfo", "PromptError"]
         
+        filters = [Filters.queryable]
+        if self.populated_only:
+            filters.append(Filters.populated)
+
         with get_org_schema(
             self.sf,
             self.org_config,
             include_counts=True,
             included_objects=extractable_data,
-            filters=[Filters.queryable, Filters.populated],
-        ) as schema, Dataset(
-            self.name,
-            self.project_config,
-            self.sf,
-            self.org_config,
-            schema,
-        ) as dataset:
+            filters=filters,
+        ) as schema:
+            if not self.data_path.exists():
+                self.data_path.mkdir(parents=True, exist_ok=True)
 
-            if not dataset.path.exists():
-                dataset.create()
+            self.logger.info(f"Extracting data to {self.data_path}")
+            self._build_decls_input()
 
-            self.logger.info(f"Extracting data to {dataset.path}")
-
-            if extraction_definition := self.options.get("extraction_definition"):
-                extraction_definition = Path(extraction_definition)
-                if not extraction_definition.exists():
-                    extraction_definition = dataset.extract_file
-            else:
-                extraction_definition = dataset.extract_file
-
-            self.logger.info(f"...Processing extraction definition: {extraction_definition}")
-            self.decls = ExtractRulesFile.parse_extract(extraction_definition)
             mappingDict = self.create_extract_mapping_file_from_declarations(
-                list(self.decls.values()), schema, []
+                list(self.decls.values()), schema, opt_in_only=opt_in_only
             )
             sobjectArray = list(mappingDict.keys())  # + self.always_include_objects
-            self.logger.info(f"Identified {len(sobjectArray)} objects to process")
-            sobjectListString = ",".join(list(set(sobjectArray)))
-            exclude = ",".join(OPT_IN_ONLY)
+            self.logger.info(f"...Identified {len(sobjectArray)} objects to process")
+            include = ",".join(list(set(sobjectArray)))
+            ignore = ",".join(opt_in_only)
 
-            self.logger.info("Getting related objects and building mapping file for extract...")
-            mappingTask = _make_task(
-                GenerateFullMapping, 
-                project_config=self.project_config, 
-                org_config=self.org_config,
-                logger=self.logger,
-                path=dataset.mapping_file,
-                include=sobjectListString,
-                ignore=exclude,
-                break_cycles="auto",
-                )
-            mappingTask()
-            self.logger.info(f"Mapping saved to : {dataset.mapping_file}")
-            self.mapping = MappingSteps.parse_from_yaml(dataset.mapping_file)
+            self._build_mapping(include, ignore)
+
             if not self.preview:
-                self.logger.info(f"Extracting data...")
+                self.logger.info(f"\n...Extracting data for {len(self.mapping.keys())} objects...")
                 for mapping in self.mapping.values():
                     sf_object = mapping["sf_object"]
-                    self.logger.info(f"Extracting data for {sf_object}")
+                    self.logger.info(f"\nExtracting data for {sf_object}")
                     soql = self._soql_for_mapping(mapping)
-                    # self.logger.debug(f"SOQL: {soql}")
                     self._run_query(soql, mapping)
+            else:
+                self._print_preview()
+
+    def _build_decls_input(self):
+        if self.sobjects:
+            self.decls = {f"{sobject}": ExtractDeclaration(sf_object=sobject, fields=["FIELDS(ALL)"]) for sobject in self.sobjects}
+        else:
+            if user_provided_def := self.options.get("extraction_definition"):
+                self.extraction_definition = Path(user_provided_def)
+                if not self.extraction_definition.exists():
+                    self.extraction_definition = self.extract_file
+
+            self.logger.info(f"\n...Processing extraction definition: {self.extraction_definition}")
+            self.decls = ExtractRulesFile.parse_extract(self.extraction_definition)
+        return self.decls
+
+    def _print_preview(self):
+        self.logger.info("Preview mode enabled. No data will be extracted.\n")
+        lb = "-" * 80
+        lb = f"\n{lb}\n"
+        decls = {k: {vk: vv for vk, vv in v if vk in ("sf_object", "fields")} for k, v in self.decls.items()}
+        if self.sobjects:
+            import yaml
+            self.logger.info(f"\nExtraction Defenition:{lb}")
+            self.logger.info(yaml.safe_dump(decls))
+        else:
+            self.logger.info(f"\nExtraction Defenition:{lb}{self.extraction_definition.read_text()}\n")
+        self.logger.info(f"\nMapping YAML:{lb}{self.mapping_file.read_text()}")
+        self.logger.info(f"\nSUMMARY{lb}")
+        sorted_mapping = [f"{k['sf_object']} ({len(k['fields'])} {'Fields' if len(k['fields']) > 1 else 'Field'})" 
+                          for k in self.mapping.values()]  
+        sorted_mapping.sort()
+        deli = "\n - "
+        if len(self.mapping.keys()) < 20:
+            self.logger.info(f"SObjects: {deli}{deli.join(sorted_mapping)}")
+        else:
+            self.logger.info(f"SObjects: {deli}{deli.join(sorted_mapping[:10])}\n... (output truncated){deli}{sorted_mapping[-1]}")
+        self.logger.info(f"\nNumber of sObjects identified: {len(self.mapping.keys())}")
+
+    def _build_mapping(self, include: str, ignore: str):
+        self.logger.info("...Getting related objects and building mapping file for extract")
+        mappingTask = _make_task(
+            GenerateFullMapping, 
+            project_config=self.project_config, 
+            org_config=self.org_config,
+            logger=self.logger,
+            path=self.mapping_file,
+            include=include,
+            ignore=ignore,
+            break_cycles="auto",
+            )
+        mappingTask()
+        self.logger.info(f"Mapping saved to : {self.mapping_file}")
+        self.mapping = MappingSteps.parse_from_yaml(self.mapping_file)
 
     def _get_extractable_objects(self):
         not_countable = NOT_COUNTABLE + ("NetworkUserHistoryRecent", "OutgoingEmail", "OutgoingEmailRelation")
@@ -179,10 +239,7 @@ class BackupData(BaseSalesforceApiTask):
 
     def _run_query(self, soql, mapping):
         """Execute a Bulk or REST API query job and store the results."""
-        unix_time = self.timestamp
-        datapath = self.datasets_path() / f"{unix_time}"
-        datapath.mkdir(parents=True, exist_ok=True)
-        csvPath = datapath / f"{mapping['sf_object']}.csv"
+        csvPath = self._csv_path(mapping['sf_object'])
         field_map = mapping.get_complete_field_map(include_id=True)
         columns = [field_map[f] for f in field_map]
         with open(csvPath, "w") as f:
@@ -338,3 +395,17 @@ class ExtractBackup(ExtractData):
                 if lookup_keys:
                     self._convert_lookups_to_id(m, lookup_keys)
 
+
+def list_todo(logger):
+
+    todolist = [
+        "Make dependency graph also include child objects",
+        "Add database support",
+        "Add support for PK encryption of extracted data"
+        ]
+    
+    lb = "-" * 80
+    lb = f"\n{lb}\n"
+    deli = "\n - "
+
+    logger.info(f"{lb}TODO:{lb} - {deli.join(todolist)}")
