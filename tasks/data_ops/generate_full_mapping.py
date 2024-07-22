@@ -44,10 +44,6 @@ class GenerateFullMapping(GenerateMapping):
                                   if field["compoundFieldName"] 
                                   and field["compoundFieldName"] != "Name"
                                   ]])
-            # for field in org_schema[obj]["fields"].values():
-            #     compoundFieldName = field["compoundFieldName"]
-            #     if compoundFieldName and compoundFieldName != "Name":
-            #         compoundFieldNames.append(compoundFieldName)  # Add to the list of compound fields
             if len(list(compoundFields)) > 0:
                 self.logger.info(f"Compound fields ignored in {obj}: {[f for f in compoundFields]}")
 
@@ -95,7 +91,7 @@ class GenerateFullMapping(GenerateMapping):
             fields = []
             lookups = []
             for field in self.simple_schema[orig_obj].values():
-                if obj in NOT_EXTRACTABLE and field["name"] not in ("Id"):
+                if obj in NOT_EXTRACTABLE and field["name"] not in ("Id"):  # Enables lookup references to be populated to non-extactable objects
                     continue
                 if field["type"] == "reference" and field["name"] != "RecordTypeId":
                     # For lookups, namespace stripping takes place below.

@@ -9,14 +9,17 @@ from cumulusci.core.datasets import _make_task  # , Dataset
 from cumulusci.tasks.bulkdata.extract import ExtractData
 from cumulusci.tasks.salesforce.SOQLQuery import SOQLQuery
 from tasks.data_ops.generate_full_mapping import GenerateFullMapping
-# from cumulusci.tasks.sample_data.capture_sample_data import CaptureSampleData
-from cumulusci.tasks.salesforce.BaseSalesforceApiTask import BaseSalesforceApiTask
+from cumulusci.tasks.salesforce.BaseSalesforceApiTask import BaseSalesforceApiTask        
 from cumulusci.tasks.bulkdata.generate_mapping_utils.generate_mapping_from_declarations import (
     SimplifiedExtractDeclarationWithLookups,
+    classify_and_filter_lookups
+    )
+from tasks.data_ops.extract_dataset_utils.synthesize_extract_declarations import (
+    flatten_declarations,
     )
 from cumulusci.core.exceptions import BulkDataException
 from cumulusci.salesforce_api.org_schema import Filters, get_org_schema
-from cumulusci.salesforce_api.filterable_objects import OPT_IN_ONLY, NOT_COUNTABLE  # , NOT_EXTRACTABLE
+from cumulusci.salesforce_api.filterable_objects import OPT_IN_ONLY, NOT_COUNTABLE, NOT_EXTRACTABLE
 from cumulusci.tasks.bulkdata.extract_dataset_utils.extract_yml import (
     ExtractRulesFile,
     ExtractDeclaration
@@ -55,7 +58,7 @@ class BackupData(BaseSalesforceApiTask):
             "required": False,
         },
         "preview": {
-            "description": "Preview the data extraction without writing to disk",
+            "description": "Preview the data extraction without writing to disk. Default is False",
             "required": False,
         },
         "include_setup_data": {
@@ -67,7 +70,7 @@ class BackupData(BaseSalesforceApiTask):
             "required": False,
             },
         "populated_only": {
-            "description": "Only include objects with data",
+            "description": "Only include objects with records. Default is True",
             "required": False,
         },
         "include_children": {
@@ -86,10 +89,10 @@ class BackupData(BaseSalesforceApiTask):
         self.include_setup_data = process_bool_arg(self.options.get("include_setup_data"))
         self.sobjects = process_list_arg(self.options.get("sobjects"))
         self.root_dir = Path(self.project_config.repo_root or "")
-        self.populated_only = process_bool_arg(self.options.get("populated_only"))
+        self.populated_only = process_bool_arg(self.options.get("populated_only", True))
         self.extraction_definition = self.extract_file
         # TODO - add support for child references (if Account is speficied, find all objects that have a relationship field relatedTo=Account)
-        self.include_child_references = process_bool_arg(self.options.get("include_child_references"))
+        self.include_child_references = process_bool_arg(self.options.get("include_children"))
 
     @property
     def path(self) -> Path:
@@ -303,18 +306,42 @@ class BackupData(BaseSalesforceApiTask):
         from an extract declarations file."""
         assert decls is not None
         
-        from cumulusci.tasks.bulkdata.generate_mapping_utils.generate_mapping_from_declarations import (
-            classify_and_filter_lookups
-        )
-        from tasks.data_ops.extract_dataset_utils.synthesize_extract_declarations import (
-            flatten_declarations,
-            )
-        
+        # include objects that have lookups to mapped objects
+        if self.include_child_references:
+            decls = self.include_referencing_objects(decls, schema, opt_in_only)
+
         simplified_decls = flatten_declarations(decls, schema, opt_in_only)
-        # self.logger.info(f"Flattened Declarations: {simplified_decls}")
         simplified_decls = classify_and_filter_lookups(simplified_decls, schema)
         mappings = [self._mapping_decl_for_extract_decl(decl) for decl in simplified_decls]
         return dict(pair for pair in mappings if pair)
+
+    def include_referencing_objects(self,
+                                    decls: T.List[ExtractDeclaration],
+                                    schema: Schema,
+                                    opt_in_only: T.Sequence[str],
+                                    ) -> T.List[SimplifiedExtractDeclarationWithLookups]:
+        """Include objects that have lookups to mapped objects"""
+        base_objects = {decl.sf_object for decl in decls if '(' not in decl.sf_object and decl.sf_object not in NOT_EXTRACTABLE}
+        mapped_objects = {decl.sf_object for decl in decls}
+        if not base_objects:
+            return decls
+        self.logger.info(f"Getting objects that reference object declarations: \n{mapped_objects}")
+        referencing_objects = set()
+        for obj in schema.keys():
+            if obj in base_objects or obj in mapped_objects:
+                continue
+            for field in schema[obj]["fields"].values():
+                if field["type"] == "reference" and field["referenceTo"]:
+                    if (any(x in base_objects for x in field["referenceTo"])):
+                        if not any(x in NOT_EXTRACTABLE for x in field["referenceTo"]):
+                            mapped_objects.add(obj)                    
+                            self.logger.info(f"Adding {obj} because it references {field['referenceTo']}")
+                            fields = ["FIELDS(ALL)"] if obj not in opt_in_only else ["Id"]
+                            referencing_objects.add(ExtractDeclaration(sf_object=obj, fields=fields))
+                            break
+        combined = decls + list(referencing_objects)
+        self.logger.info(f"Added {len(referencing_objects)} objects that reference mapped objects")
+        return combined
 
     def _mapping_decl_for_extract_decl(
         self,
@@ -401,7 +428,6 @@ class ExtractBackup(ExtractData):
 def list_todo(logger):
 
     todolist = [
-        "Make dependency graph also include child objects (--include-child-references)",
         "Add database support",
         "Add support for PK encryption of extracted data",
         ]
