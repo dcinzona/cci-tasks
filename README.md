@@ -60,3 +60,14 @@ extract:
 This will extract all fields for the specified sobjects (standard and custom). It will also identify dependencies and extract related objects and fields. This option overrides the extraction definition file.
 
 This hasn't been *thoroughly* tested, so please use with caution.
+
+
+### `update_help_text`
+
+This task will check your local project directory for any object fields that have `<inlineHelpText>` defined in the metadata. If it exists, it will compare that with what is currently in the org and update the org if necessary.
+
+**Command Syntax**: `cci task run update_help_text --org <org_name>`
+
+#### Options:
+- `--org` (Required) - The name of the org to run the task against
+- `--dir` (Optional) - The directory to search for metadata files. Defaults to the current directory

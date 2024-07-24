@@ -7,7 +7,7 @@ from cumulusci.utils.xml.metadata_tree import parse
 from cumulusci.tasks.metadata_etl.help_text import SetFieldHelpText
 
 
-class Playground(BaseSalesforceApiTask):
+class UpdateHelpText(BaseSalesforceApiTask):
 
     task_options = {
         "dir": {
