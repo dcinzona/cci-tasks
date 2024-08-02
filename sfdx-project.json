@@ -1,1 +1,9 @@
-{"packageDirectories": [{"path": "force-app", "default": true}], "namespace": null, "sourceApiVersion": "61.0"}
+{
+    "packageDirectories": [
+        {
+            "default": true,
+            "path": "force-app/temp"
+        }
+    ],
+    "sourceApiVersion": "61.0"
+}

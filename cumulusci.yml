@@ -8,6 +8,14 @@ project:
     default_branch: "main"
   source_format: sfdx
 
+orgs:
+    scratch:
+        comm:
+            config_file: orgs/communities.json
+        dev:
+            config_file: orgs/dev.json
+    
+
 tasks:
   
   play:
