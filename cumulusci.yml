@@ -12,6 +12,8 @@ orgs:
     scratch:
         comm:
             config_file: orgs/communities.json
+        comm2:
+            config_file: orgs/comm-no-sample.json
         dev:
             config_file: orgs/dev.json
     

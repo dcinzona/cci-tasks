@@ -52,4 +52,4 @@ $RECYCLE.BIN/
 .project
 .settings
 
-# force-app/temp/**
+force-app/temp/**
