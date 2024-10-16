@@ -1,0 +1,45 @@
+<template>
+    <lightning-card title="User Search" icon-name="custom:custom14">
+        <div class="slds-m-around_medium">
+            <lightning-input 
+            label="Search User" 
+            value={searchKey} 
+            onchange={handleSearchKeyChange} 
+            type="search"
+            is-loading={isLoading}
+            ></lightning-input>
+        </div>
+        <template if:true={error}>
+            <p>{error}</p>
+        </template>
+        <template if:true={isLoading}>
+            <div class="slds-m-around_medium">
+                <lightning-spinner alternative-text="Loading" size="medium"></lightning-spinner>
+            </div>
+        </template>
+        <template if:true={selectedData.length}>
+            <div class="slds-m-around_medium">
+                <template for:each={selectedData} for:item="user" for:index="index">
+                    <lightning-pill key={user.Id} label={user.Name} onremove={handleRemovePill} name={user.Id} class="slds-m-right_small">
+                        <lightning-icon icon-name="standard:user" alternative-text="User"></lightning-icon>
+                    </lightning-pill>
+                </template>
+            </div>
+        </template>
+        <template if:true={showTable}>
+            <lightning-datatable 
+            data={searchResults} 
+            columns={columns} 
+            key-field="Id"
+            onrowselection={handleRowSelection}
+            max-row-selection={maxRowSelection}
+            selected-rows={currentlySelectedData}>
+            </lightning-datatable>
+            <template if:true={showNoResults}>
+                <div class="slds-m-around_medium">
+                    <c-noresults friendly-message="No Results"></c-noresults>
+                </div>
+            </template>
+        </template>
+    </lightning-card>
+</template>
