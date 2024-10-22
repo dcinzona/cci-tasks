@@ -22,6 +22,8 @@ export default class PocUserSearchComponent extends LightningElement {
     @api showTable = false;
     @api selectedData = [];
     @api currentlySelectedData = [];
+    @api objectApiName;
+    @api recordId;
 
     connectedCallback() {
         console.log('Selected users:', JSON.stringify(this.selectedUsers));
@@ -94,7 +96,6 @@ export default class PocUserSearchComponent extends LightningElement {
     }
 
     searchUsers(input) {
-        this.isLoading = true;
         findUsers({ searchKey: input })
             .then(result => {
                 this.error = null;
@@ -103,11 +104,12 @@ export default class PocUserSearchComponent extends LightningElement {
                     return { ...user, ProfileName: user.Profile?.Name };
                 });
                 this.showTable = true;
-                this.isLoading = false;
                 this.currentlySelectedData = this.selectedData.map(row => row.Id);
             })
             .catch(error => {
-                this.error = error;
+                this.showTable = false;
+                this.error = error.body.message;
+                console.log('Error searching users:', error);
                 this.dispatchEvent(
                     new ShowToastEvent({
                         title: 'Error searching users',
@@ -115,6 +117,8 @@ export default class PocUserSearchComponent extends LightningElement {
                         variant: 'error',
                     }),
                 );
+            })
+            .finally(() => {
                 this.isLoading = false;
             });
     }

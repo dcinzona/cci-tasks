@@ -2,7 +2,7 @@
     "packageDirectories": [
         {
             "default": true,
-            "path": "force-app/temp"
+            "path": "force-app"
         }
     ],
     "sourceApiVersion": "61.0"

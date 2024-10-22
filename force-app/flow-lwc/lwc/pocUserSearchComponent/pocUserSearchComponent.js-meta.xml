@@ -6,12 +6,21 @@
     <description>Proof of concept for searching for users</description>
     <targets>
         <target>lightning__FlowScreen</target>
-        <target>lightning__AppPage</target>
-        <target>lightning__HomePage</target>
+        <target>lightning__RecordPage</target>
     </targets>
    <targetConfigs>
-         <targetConfig targets="lightning__AppPage, lightning__HomePage">
+         <targetConfig targets="lightning__AppPage, lightning__HomePage, lightning__RecordPage">
              <property name="maxRowSelection" type="Integer" default="5" />
+             <property name="objectApiLabel" type="String" />
+             <property
+               name="objectApiName"
+               type="String"
+               label="Object NAPI ame"
+               description="Automatically bind the page's object name to the component variable"
+               default="{!objectApiName}"
+             />
+             <property name="showCard" type="Boolean" />
+             <property name="lookupFieldApiName" type="String" />
          </targetConfig>
          <targetConfig targets="lightning__FlowScreen">
             <property name="selectedUsers" label="Selected Users" type="@salesforce/schema/User[]" />
