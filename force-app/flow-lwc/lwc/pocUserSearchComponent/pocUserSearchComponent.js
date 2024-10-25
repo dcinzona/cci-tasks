@@ -23,6 +23,9 @@ export default class PocUserSearchComponent extends LightningElement {
     @api selectedData = [];
     @api currentlySelectedData = [];
     @api objectApiName;
+    @api objectApiLabel;
+    @api showCard;
+    @api lookupFieldApiName;
     @api recordId;
 
     connectedCallback() {

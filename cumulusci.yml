@@ -16,6 +16,8 @@ orgs:
             config_file: orgs/comm-no-sample.json
         dev:
             config_file: orgs/dev.json
+        pa:
+            config_file: orgs/person-accounts.json
     
 
 tasks:

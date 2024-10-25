@@ -5,6 +5,8 @@
     <masterLabel>User Search LWC</masterLabel>
     <description>Proof of concept for searching for users</description>
     <targets>
+        <target>lightning__AppPage</target>
+        <target>lightning__HomePage</target>
         <target>lightning__FlowScreen</target>
         <target>lightning__RecordPage</target>
     </targets>
