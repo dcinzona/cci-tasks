@@ -5,7 +5,6 @@ import createChildRecord from "@salesforce/apex/ReactiveController.createChildRe
 import AccountIdField from "@salesforce/schema/Account.Id";
 import AccountNameField from "@salesforce/schema/Account.Name";
 import { RefreshEvent } from "lightning/refresh";
-import { CloseActionScreenEvent } from "lightning/actions";
 import { CurrentPageReference } from "lightning/navigation";
 
 const FIELDS = [AccountIdField, AccountNameField];

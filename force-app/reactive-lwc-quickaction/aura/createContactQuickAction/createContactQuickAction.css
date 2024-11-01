@@ -1,8 +1,3 @@
 .THIS {
-    padding: var(--lwc-spacingNone, 0px);
-    height: 100%;
-    background-color: red;
-}
-.THIS .forceChatterBasePublisher :not(.PHONE) .cuf-content{
-    padding: var(--lwc-spacingNone, 0);
+    
 }
