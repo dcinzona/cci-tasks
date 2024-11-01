@@ -1,0 +1,58 @@
+<template>
+    <div class="slds-grid slds-grid_vertical">
+        <div class="slds-col slds-align-top slds-size_1-of-1">
+            <div class="slds-modal__header" role="banner">
+                <lightning-record-view-form object-api-name={objectApiName} record-id={recordId}>
+                    <div class="slds-text-heading_label">
+                        <lightning-output-field field-name="Name" variant="label-hidden"> </lightning-output-field>
+                    </div>
+                </lightning-record-view-form>
+                <h1 class="slds-page-header__title slds-m-right_small slds-truncate slds-align-left">
+                    Create New Contact
+                </h1>
+            </div>
+        </div>
+        <div
+            class="slds-col scrollable slds-align-middle slds-p-around_small slds-p-around_medium slds-size_1-of-1"
+            style="max-height: 600px; overflow-y: auto !important"
+        >
+            <template lwc:if={recordData}>
+                <lightning-input
+                    label="First Name"
+                    class="slds-m-bottom_x-small"
+                    onchange={handleChange}
+                    data-id="firstname"
+                    type="text"
+                >
+                </lightning-input>
+                <lightning-input
+                    label="Last Name"
+                    class="slds-m-bottom_x-small"
+                    onchange={handleChange}
+                    data-id="lastname"
+                    type="text"
+                    required
+                >
+                </lightning-input>
+            </template>
+        </div>
+        <div slot="footer" class="slds-col modal-footer slds-align-bottom slds-size_1-of-1 slds-modal__footer">
+            <div class="slds-grid slds-grid_align-spread">
+                <div class="slds-col">
+                    <lightning-button variant="neutral" label="Cancel" onclick={handleCancel}> </lightning-button>
+                </div>
+                <div class="slds-col">
+                    <lightning-button
+                        variant="brand"
+                        class="slds-m-left_x-small"
+                        label="Save"
+                        type="submit"
+                        onclick={handleSubmit}
+                        disabled={disabled}
+                    >
+                    </lightning-button>
+                </div>
+            </div>
+        </div>
+    </div>
+</template>
