@@ -1,5 +1,5 @@
 import { LightningElement, api, wire } from "lwc";
-import { getRecord } from "lightning/uiRecordApi";
+import { getRecord, notifyRecordUpdateAvailable } from "lightning/uiRecordApi";
 import { ShowToastEvent } from "lightning/platformShowToastEvent";
 import createChildRecord from "@salesforce/apex/ReactiveController.createChildRecord";
 import AccountIdField from "@salesforce/schema/Account.Id";
@@ -60,14 +60,16 @@ export default class ReactiveQuickAction extends LightningElement {
                 })
             );
         }
+        // Close the action screen
+        // TRIED EVERYTHING TO GET THIS TO WORK
         // Refresh the parent record
         this.dispatchEvent(new RefreshEvent());
-        // Close the action screen
-        // this.dispatchEvent(new CloseActionScreenEvent());
+        this.dispatchEvent(new notifyRecordUpdateAvailable({ recordId: this.recordId }));
+        this.dispatchEvent(new CloseActionScreenEvent());
+        // Fire the custom event (this is for the AURA wrapper to refresh the UI)
         const doneEvent = new CustomEvent("processcomplete", {
             detail: { result: result }
         });
-        // Fire the custom event
         this.dispatchEvent(doneEvent);
     }
 
