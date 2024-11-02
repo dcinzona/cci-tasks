@@ -9,6 +9,9 @@
                         <valueListItems>
                             <value>Account.New_Contact_Aura</value>
                         </valueListItems>
+                        <valueListItems>
+                            <value>Account.Create_Contact_LWC</value>
+                        </valueListItems>
                     </valueList>
                 </componentInstanceProperties>
                 <componentInstanceProperties>

@@ -6,6 +6,8 @@ import AccountIdField from "@salesforce/schema/Account.Id";
 import AccountNameField from "@salesforce/schema/Account.Name";
 import { RefreshEvent } from "lightning/refresh";
 import { CurrentPageReference } from "lightning/navigation";
+import { CloseActionScreenEvent } from "lightning/actions";
+import { refreshApex } from "@salesforce/apex";
 
 const FIELDS = [AccountIdField, AccountNameField];
 
@@ -14,6 +16,7 @@ export default class ReactiveQuickAction extends LightningElement {
     @api objectApiName;
     @api firstname;
     @api lastname;
+    @api isEmbeddedInAura = false;
     disabled = false;
 
     @wire(getRecord, { recordId: "$recordId", fields: FIELDS })
@@ -61,23 +64,38 @@ export default class ReactiveQuickAction extends LightningElement {
             );
         }
         // Close the action screen
-        // TRIED EVERYTHING TO GET THIS TO WORK
-        // Refresh the parent record
-        this.dispatchEvent(new RefreshEvent());
-        this.dispatchEvent(new notifyRecordUpdateAvailable({ recordId: this.recordId }));
-        this.dispatchEvent(new CloseActionScreenEvent());
-        // Fire the custom event (this is for the AURA wrapper to refresh the UI)
-        const doneEvent = new CustomEvent("processcomplete", {
-            detail: { result: result }
-        });
-        this.dispatchEvent(doneEvent);
+        console.log("isEmbeddedInAura", this.isEmbeddedInAura);
+        if (!this.isEmbeddedInAura) {
+            // TRIED EVERYTHING TO GET THIS TO WORK
+            // Refresh the parent record
+            // Notify LDS that you've changed the record outside its mechanisms
+            refreshApex(this.accountRecord).then(() => {
+                try {
+                    notifyRecordUpdateAvailable([{ recordId: this.recordId }]).then(() => {
+                        this.dispatchEvent(new RefreshEvent());
+                        this.dispatchEvent(new CloseActionScreenEvent());
+                    });
+                } catch (error) {
+                    console.log("error", error);
+                    this.dispatchEvent(new RefreshEvent());
+                    this.dispatchEvent(new CloseActionScreenEvent());
+                }
+            });
+        } else {
+            // Fire the custom event (this is for the AURA wrapper to refresh the UI)
+            const doneEvent = new CustomEvent("processcomplete", {
+                detail: { result: result }
+            });
+            this.dispatchEvent(doneEvent);
+        }
     }
 
     // Method to create the child record
     createChildRecord(childObjectApiName, fields) {
         createChildRecord({ objectApiName: childObjectApiName, fields: fields })
-            .then((result) => {
-                this.sendCloseEvents(result);
+            .then(() => {
+                //await this.refreshTab("success");
+                this.sendCloseEvents("success");
             })
             .catch((error) => {
                 // Display a toast notification
@@ -89,5 +107,47 @@ export default class ReactiveQuickAction extends LightningElement {
                     })
                 );
             });
+    }
+
+    // WORKSPACE / CONSOLE CHECK
+    refreshTab(msg) {
+        this.invokeWorkspaceAPI("isConsoleNavigation").then((isConsole) => {
+            if (isConsole) {
+                this.invokeWorkspaceAPI("getFocusedTabInfo").then((focusedTab) => {
+                    this.invokeWorkspaceAPI("refreshTab", {
+                        tabId: focusedTab.tabId
+                    }).then(async (response) => {
+                        this.sendCloseEvents(msg);
+                    });
+                });
+            } else {
+                // not console, just do a refresh
+                this.sendCloseEvents(msg);
+            }
+        });
+    }
+
+    invokeWorkspaceAPI(methodName, methodArgs) {
+        return new Promise((resolve, reject) => {
+            const apiEvent = new CustomEvent("internalapievent", {
+                bubbles: true,
+                composed: true,
+                cancelable: false,
+                detail: {
+                    category: "workspaceAPI",
+                    methodName: methodName,
+                    methodArgs: methodArgs,
+                    callback: (err, response) => {
+                        if (err) {
+                            return reject(err);
+                        } else {
+                            return resolve(response);
+                        }
+                    }
+                }
+            });
+            this.dispatchEvent(apiEvent);
+            window.dispatchEvent(apiEvent);
+        });
     }
 }
