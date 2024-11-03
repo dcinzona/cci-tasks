@@ -52,7 +52,7 @@ export default class ReactiveQuickAction extends LightningElement {
     }
 
     sendCloseEvents(result) {
-        console.log("sendCloseEvents", result);
+        console.log("sendCloseEvents(result) => ", result);
         if (result !== "cancel") {
             // Display a toast notification
             this.dispatchEvent(
@@ -65,13 +65,17 @@ export default class ReactiveQuickAction extends LightningElement {
         }
         // Close the action screen
         console.log("isEmbeddedInAura", this.isEmbeddedInAura);
+        console.log("this.recordId", this.recordId);
         if (!this.isEmbeddedInAura) {
             // TRIED EVERYTHING TO GET THIS TO WORK
             // Refresh the parent record
             // Notify LDS that you've changed the record outside its mechanisms
             refreshApex(this.accountRecord).then(() => {
                 try {
-                    notifyRecordUpdateAvailable([{ recordId: this.recordId }]).then(() => {
+                    let records = [{ recordId: this.recordId }, { recordId: result }];
+                    console.log("records for update", JSON.stringify(records));
+                    notifyRecordUpdateAvailable(records).then(() => {
+                        console.log("notifyRecordUpdateAvailable done");
                         this.dispatchEvent(new RefreshEvent());
                         this.dispatchEvent(new CloseActionScreenEvent());
                     });
@@ -93,9 +97,9 @@ export default class ReactiveQuickAction extends LightningElement {
     // Method to create the child record
     createChildRecord(childObjectApiName, fields) {
         createChildRecord({ objectApiName: childObjectApiName, fields: fields })
-            .then(() => {
+            .then((recId) => {
                 //await this.refreshTab("success");
-                this.sendCloseEvents("success");
+                this.sendCloseEvents(recId);
             })
             .catch((error) => {
                 // Display a toast notification
