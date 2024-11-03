@@ -8,10 +8,38 @@ import { RefreshEvent } from "lightning/refresh";
 import { CurrentPageReference } from "lightning/navigation";
 import { CloseActionScreenEvent } from "lightning/actions";
 import { refreshApex } from "@salesforce/apex";
+// ------- ZK: only added this import below
+import { getRelatedListRecords } from "lightning/uiRelatedListApi";
 
 const FIELDS = [AccountIdField, AccountNameField];
 
 export default class ReactiveQuickAction extends LightningElement {
+    // ----- ZK: added this related list wire
+    error;
+    records = [];
+    contactData;
+
+    @wire(getRelatedListRecords, {
+        parentRecordId: "$recordId",
+        relatedListId: "Contacts",
+        fields: ["Contact.Id"]
+    })
+    listInfo(result) {
+        this.contactData = result;
+        if (result.data) {
+            this.records = result.data.records;
+            this.error = undefined;
+        } else if (result.error) {
+            this.error = result.error;
+            this.records = undefined;
+        }
+    }
+
+    get hasNoRecords() {
+        return this.records?.length === 0;
+    }
+    // -----
+
     @api recordId;
     @api objectApiName;
     @api firstname;
@@ -70,18 +98,14 @@ export default class ReactiveQuickAction extends LightningElement {
             // TRIED EVERYTHING TO GET THIS TO WORK
             // Refresh the parent record
             // Notify LDS that you've changed the record outside its mechanisms
-            refreshApex(this.accountRecord).then(() => {
+
+            // ------ ZK: just needed to call refreshApex on the related list wire
+            refreshApex(this.contactData).then(() => {
                 try {
-                    let records = [{ recordId: this.recordId }, { recordId: result }];
-                    console.log("records for update", JSON.stringify(records));
-                    notifyRecordUpdateAvailable(records).then(() => {
-                        console.log("notifyRecordUpdateAvailable done");
-                        this.dispatchEvent(new RefreshEvent());
-                        this.dispatchEvent(new CloseActionScreenEvent());
-                    });
+                    console.log("refreshApex success with getRelatedListRecords wire");
+                    this.dispatchEvent(new CloseActionScreenEvent());
                 } catch (error) {
                     console.log("error", error);
-                    this.dispatchEvent(new RefreshEvent());
                     this.dispatchEvent(new CloseActionScreenEvent());
                 }
             });
@@ -98,7 +122,6 @@ export default class ReactiveQuickAction extends LightningElement {
     createChildRecord(childObjectApiName, fields) {
         createChildRecord({ objectApiName: childObjectApiName, fields: fields })
             .then((recId) => {
-                //await this.refreshTab("success");
                 this.sendCloseEvents(recId);
             })
             .catch((error) => {
@@ -111,47 +134,5 @@ export default class ReactiveQuickAction extends LightningElement {
                     })
                 );
             });
-    }
-
-    // WORKSPACE / CONSOLE CHECK
-    refreshTab(msg) {
-        this.invokeWorkspaceAPI("isConsoleNavigation").then((isConsole) => {
-            if (isConsole) {
-                this.invokeWorkspaceAPI("getFocusedTabInfo").then((focusedTab) => {
-                    this.invokeWorkspaceAPI("refreshTab", {
-                        tabId: focusedTab.tabId
-                    }).then(async (response) => {
-                        this.sendCloseEvents(msg);
-                    });
-                });
-            } else {
-                // not console, just do a refresh
-                this.sendCloseEvents(msg);
-            }
-        });
-    }
-
-    invokeWorkspaceAPI(methodName, methodArgs) {
-        return new Promise((resolve, reject) => {
-            const apiEvent = new CustomEvent("internalapievent", {
-                bubbles: true,
-                composed: true,
-                cancelable: false,
-                detail: {
-                    category: "workspaceAPI",
-                    methodName: methodName,
-                    methodArgs: methodArgs,
-                    callback: (err, response) => {
-                        if (err) {
-                            return reject(err);
-                        } else {
-                            return resolve(response);
-                        }
-                    }
-                }
-            });
-            this.dispatchEvent(apiEvent);
-            window.dispatchEvent(apiEvent);
-        });
     }
 }
