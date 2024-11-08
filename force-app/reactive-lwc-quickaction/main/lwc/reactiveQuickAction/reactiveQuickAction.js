@@ -1,11 +1,9 @@
 import { LightningElement, api, wire } from "lwc";
-import { getRecord, notifyRecordUpdateAvailable } from "lightning/uiRecordApi";
+import { getRecord } from "lightning/uiRecordApi";
 import { ShowToastEvent } from "lightning/platformShowToastEvent";
 import createChildRecord from "@salesforce/apex/ReactiveController.createChildRecord";
 import AccountIdField from "@salesforce/schema/Account.Id";
 import AccountNameField from "@salesforce/schema/Account.Name";
-import { RefreshEvent } from "lightning/refresh";
-import { CurrentPageReference } from "lightning/navigation";
 import { CloseActionScreenEvent } from "lightning/actions";
 import { refreshApex } from "@salesforce/apex";
 // ------- ZK: only added this import below
@@ -22,7 +20,7 @@ export default class ReactiveQuickAction extends LightningElement {
     @wire(getRelatedListRecords, {
         parentRecordId: "$recordId",
         relatedListId: "Contacts",
-        fields: ["Contact.Id"]
+        fields: ["Contact.Id","Contact.AccountId","Contact.FirstName","Contact.LastName"]
     })
     listInfo(result) {
         this.contactData = result;
@@ -40,7 +38,14 @@ export default class ReactiveQuickAction extends LightningElement {
     }
     // -----
 
-    @api recordId;
+    @api
+    set recordId(recordId) {
+        this._recordId = recordId;
+    }
+    get recordId() {
+        return this._recordId;
+    }
+
     @api objectApiName;
     @api firstname;
     @api lastname;
@@ -50,11 +55,15 @@ export default class ReactiveQuickAction extends LightningElement {
     @wire(getRecord, { recordId: "$recordId", fields: FIELDS })
     accountRecord;
 
-    @wire(CurrentPageReference)
-    pageRef;
+    @api
+    handleSave() {
+        return this.handleSubmit();
+    }
 
-    get pageRefString() {
-        return JSON.stringify(this.pageRef);
+    @api
+    async handleSaveAndNew() {
+        await this.handleSubmit();
+        this.resetAllValues();
     }
     // Getter to return the record data
     get recordData() {
@@ -66,13 +75,27 @@ export default class ReactiveQuickAction extends LightningElement {
         this[event.target.dataset.id] = val;
     }
 
-    handleSubmit(event) {
-        // Create the child record
-        this.createChildRecord("Contact", {
-            FirstName: this.firstname,
-            LastName: this.lastname,
-            AccountId: this.recordId
+    async handleSubmit(event) {
+        const { error, recId } = await createChildRecord({
+            objectApiName: "Contact",
+            fields: {
+                FirstName: this.firstname,
+                LastName: this.lastname,
+                AccountId: this.recordId
+            }
         });
+        if (error) {
+            // Display a toast notification
+            this.dispatchEvent(
+                new ShowToastEvent({
+                    title: "Error creating child record",
+                    message: error.body.message,
+                    variant: "error"
+                })
+            );
+        } else {
+            this.sendCloseEvents(recId);
+        }
     }
 
     handleCancel(event) {
@@ -92,13 +115,8 @@ export default class ReactiveQuickAction extends LightningElement {
             );
         }
         // Close the action screen
-        console.log("isEmbeddedInAura", this.isEmbeddedInAura);
-        console.log("this.recordId", this.recordId);
         if (!this.isEmbeddedInAura) {
-            // TRIED EVERYTHING TO GET THIS TO WORK
-            // Refresh the parent record
-            // Notify LDS that you've changed the record outside its mechanisms
-
+            // Native LWC - not embedded in Aura
             // ------ ZK: just needed to call refreshApex on the related list wire
             refreshApex(this.contactData).then(() => {
                 try {
@@ -119,20 +137,20 @@ export default class ReactiveQuickAction extends LightningElement {
     }
 
     // Method to create the child record
-    createChildRecord(childObjectApiName, fields) {
-        createChildRecord({ objectApiName: childObjectApiName, fields: fields })
-            .then((recId) => {
-                this.sendCloseEvents(recId);
-            })
-            .catch((error) => {
-                // Display a toast notification
-                this.dispatchEvent(
-                    new ShowToastEvent({
-                        title: "Error creating child record",
-                        message: error.body.message,
-                        variant: "error"
-                    })
-                );
-            });
-    }
+    // createChildRecord(childObjectApiName, fields) {
+    //     createChildRecord({ objectApiName: childObjectApiName, fields: fields })
+    //         .then((recId) => {
+    //             this.sendCloseEvents(recId);
+    //         })
+    //         .catch((error) => {
+    //             // Display a toast notification
+    //             this.dispatchEvent(
+    //                 new ShowToastEvent({
+    //                     title: "Error creating child record",
+    //                     message: error.body.message,
+    //                     variant: "error"
+    //                 })
+    //             );
+    //         });
+    // }
 }
