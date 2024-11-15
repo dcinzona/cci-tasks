@@ -209,7 +209,7 @@ def synthesize_declaration_for_sobject(
         return ret
     else:
         if sf_object in NOT_EXTRACTABLE:
-            # fields = [f["name"] for f in schema_fields.values() if not f["nillable"]]
+            # fields = [f["name"] for f in schema_fields.values() if not f["nillable"]] or ["Id"]
             fields = ["Id"]
             # raise ValueError(
             #     f"Cannot extract {sf_object} because it is not extractable.\n Required fields: {fields}"

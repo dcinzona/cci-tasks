@@ -82,6 +82,10 @@ class BackupData(BaseSalesforceApiTask):
             "description": "Include child references in the extraction. By default, we relate only to the parents of the objects defined",
             "required": False,
         },
+        "exclude_referenced": {
+            "description": "Exclude sObjects defined by lookup / reference fields from the extraction. Default is False",
+            "required": False,
+        },
     }
 
     always_include_objects = ["User", "Group"]
@@ -102,6 +106,16 @@ class BackupData(BaseSalesforceApiTask):
         self.include_child_references = process_bool_arg(
             self.options.get("include_children")
         )
+        self.exclude_referenced_objects = process_bool_arg(
+            self.options.get("exclude_referenced")
+        )
+        if self.exclude_referenced_objects:
+            if len(self.sobjects) > 0:
+                self.always_include_objects = []
+                self.include_child_references = False
+            else:
+                self.exclude_referenced_objects = False
+                self.logger.info('Excluding referenced objects requires a list of sobjects to be specified. Ignoring option.')
 
     @property
     def path(self) -> Path:
@@ -129,11 +143,15 @@ class BackupData(BaseSalesforceApiTask):
                 self._run_exectute()
         else:
             self._run_exectute()
+
         list_todo(self.logger)
 
     def _run_exectute(self):
 
         extractable_data = self._get_extractable_objects()
+        if self.exclude_referenced_objects:
+            extractable_data = self.sobjects
+
         if self.include_setup_data:
             opt_in_only = []
         else:
@@ -171,7 +189,7 @@ class BackupData(BaseSalesforceApiTask):
                 self.logger.info(
                     f"\n...Extracting data for {len(self.mapping.keys())} objects..."
                 )
-                for mapping in self.mapping.values():
+                for mapping in self.mapping.values():  # self.mapping.values():
                     sf_object = mapping["sf_object"]
                     self.logger.info(f"\nExtracting data for {sf_object}")
                     soql = self._soql_for_mapping(mapping)
@@ -207,17 +225,20 @@ class BackupData(BaseSalesforceApiTask):
             k: {vk: vv for vk, vv in v if vk in ("sf_object", "fields")}
             for k, v in self.decls.items()
         }
+
         if self.sobjects:
             import yaml
 
-            self.logger.info(f"\nExtraction Defenition:{lb}")
+            self.logger.info(f"\nExtraction Definition:{lb}")
             self.logger.info(yaml.safe_dump(decls))
         else:
             self.logger.info(
-                f"\nExtraction Defenition:{lb}{self.extraction_definition.read_text()}\n"
+                f"\nExtraction Definition:{lb}{self.extraction_definition.read_text()}\n"
             )
         self.logger.info(f"\nMapping YAML:{lb}{self.mapping_file.read_text()}")
         self.logger.info(f"\nSUMMARY{lb}")
+
+        self.logger.info("*** Preview mode enabled. No data was be extracted. ***\n")
         sorted_mapping = [
             f"{k['sf_object']} ({len(k['fields'])} {'Fields' if len(k['fields']) > 1 else 'Field'})"
             for k in self.mapping.values()
@@ -225,10 +246,10 @@ class BackupData(BaseSalesforceApiTask):
         sorted_mapping.sort()
         deli = "\n - "
         if len(self.mapping.keys()) < 20:
-            self.logger.info(f"SObjects: {deli}{deli.join(sorted_mapping)}")
+            self.logger.info(f"sObjects: {deli}{deli.join(sorted_mapping)}")
         else:
             self.logger.info(
-                f"SObjects: {deli}{deli.join(sorted_mapping[:10])}\n... (output truncated){deli}{sorted_mapping[-1]}"
+                f"sObjects: {deli}{deli.join(sorted_mapping[:10])}\n... (output truncated){deli}{sorted_mapping[-1]}"
             )
         self.logger.info(f"\nNumber of sObjects identified: {len(self.mapping.keys())}")
 
@@ -236,6 +257,13 @@ class BackupData(BaseSalesforceApiTask):
         self.logger.info(
             "...Getting related objects and building mapping file for extract"
         )
+        if self.exclude_referenced_objects:
+            self.logger.info(
+                "...Excluding objects defined by lookup fields from the extraction"
+            )
+            sobjectArray = include.split(", ")
+            ignore = ','.join([x["name"] for x in self.sf.describe()["sobjects"] if x["name"] not in sobjectArray])
+            # self.logger.info(f"Including {[f['sf_object'] for f in self.mapping.values()]}")
         mappingTask = _make_task(
             GenerateFullMapping,
             project_config=self.project_config,

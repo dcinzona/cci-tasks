@@ -91,8 +91,9 @@ class GenerateFullMapping(GenerateMapping):
             fields = []
             lookups = []
             for field in self.simple_schema[orig_obj].values():
-                if obj in NOT_EXTRACTABLE and field["name"] not in ("Id"):  # Enables lookup references to be populated to non-extactable objects
-                    continue
+                """Enables lookup references to be populated to non-extactable objects"""
+                if obj in NOT_EXTRACTABLE and field["name"] not in ("Id") and obj != "RecordType":
+                    continue                
                 if field["type"] == "reference" and field["name"] != "RecordTypeId":
                     # For lookups, namespace stripping takes place below.
                     lookups.append(field["name"])
