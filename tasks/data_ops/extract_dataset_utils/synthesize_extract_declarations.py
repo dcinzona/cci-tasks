@@ -1,15 +1,25 @@
 import collections
-import re
 import typing as T
 
 from cumulusci.tasks.bulkdata.extract_dataset_utils.synthesize_extract_declarations import (
-    SimplifiedExtractDeclaration
+    SimplifiedExtractDeclaration,
 )
-from cumulusci.salesforce_api.org_schema import NOT_COUNTABLE, Field, Schema, NOT_EXTRACTABLE
+from cumulusci.salesforce_api.org_schema import (
+    # NOT_COUNTABLE,
+    Field,
+    Schema,
+    NOT_EXTRACTABLE,
+)
 from cumulusci.utils.iterators import partition
 
-from cumulusci.tasks.bulkdata.extract_dataset_utils.extract_yml import ExtractDeclaration, SFFieldGroupTypes, SFObjectGroupTypes
-from cumulusci.tasks.bulkdata.extract_dataset_utils.hardcoded_default_declarations import DEFAULT_DECLARATIONS
+from cumulusci.tasks.bulkdata.extract_dataset_utils.extract_yml import (
+    ExtractDeclaration,
+    SFFieldGroupTypes,
+    SFObjectGroupTypes,
+)
+from cumulusci.tasks.bulkdata.extract_dataset_utils.hardcoded_default_declarations import (
+    DEFAULT_DECLARATIONS,
+)
 
 
 def flatten_declarations(
@@ -172,17 +182,9 @@ def _find_matching_field_declarations(
 
     if ctype == SFFieldGroupTypes.standard:
         # find updateable standard fields
-        return (
-            field.name
-            for field in schema_fields.values()
-            if not field.custom
-        )
+        return (field.name for field in schema_fields.values() if not field.custom)
     elif ctype == SFFieldGroupTypes.custom:
-        return (
-            field.name
-            for field in schema_fields.values()
-            if field.custom
-        )
+        return (field.name for field in schema_fields.values() if field.custom)
     elif ctype == SFFieldGroupTypes.required:
         # required fields are always exported
         return ()

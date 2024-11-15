@@ -1,4 +1,3 @@
-
 from pathlib import Path
 import csv
 import time
@@ -9,20 +8,24 @@ from cumulusci.core.datasets import _make_task  # , Dataset
 from cumulusci.tasks.bulkdata.extract import ExtractData
 from cumulusci.tasks.salesforce.SOQLQuery import SOQLQuery
 from tasks.data_ops.generate_full_mapping import GenerateFullMapping
-from cumulusci.tasks.salesforce.BaseSalesforceApiTask import BaseSalesforceApiTask        
+from cumulusci.tasks.salesforce.BaseSalesforceApiTask import BaseSalesforceApiTask
 from cumulusci.tasks.bulkdata.generate_mapping_utils.generate_mapping_from_declarations import (
     SimplifiedExtractDeclarationWithLookups,
-    classify_and_filter_lookups
-    )
+    classify_and_filter_lookups,
+)
 from tasks.data_ops.extract_dataset_utils.synthesize_extract_declarations import (
     flatten_declarations,
-    )
+)
 from cumulusci.core.exceptions import BulkDataException
 from cumulusci.salesforce_api.org_schema import Filters, get_org_schema
-from cumulusci.salesforce_api.filterable_objects import OPT_IN_ONLY, NOT_COUNTABLE, NOT_EXTRACTABLE
+from cumulusci.salesforce_api.filterable_objects import (
+    OPT_IN_ONLY,
+    NOT_COUNTABLE,
+    NOT_EXTRACTABLE,
+)
 from cumulusci.tasks.bulkdata.extract_dataset_utils.extract_yml import (
     ExtractRulesFile,
-    ExtractDeclaration
+    ExtractDeclaration,
 )
 from cumulusci.tasks.bulkdata.mapping_parser import validate_and_inject_mapping
 from cumulusci.tasks.bulkdata.step import DataOperationType
@@ -32,7 +35,9 @@ from cumulusci.core.utils import process_bool_arg, process_list_arg
 
 from cumulusci.tasks.bulkdata.step import DataOperationStatus, get_query_operation
 from cumulusci.tasks.bulkdata.mapping_parser import MappingStep as CumulusciMappingStep
-from cumulusci.tasks.bulkdata.mapping_parser import MappingSteps as CumulusciMappingSteps
+from cumulusci.tasks.bulkdata.mapping_parser import (
+    MappingSteps as CumulusciMappingSteps,
+)
 from cumulusci.utils import log_progress
 from typing import Mapping, Dict
 
@@ -68,7 +73,7 @@ class BackupData(BaseSalesforceApiTask):
         "sobjects": {
             "description": "A comma separated list of sobjects to extract.  Overrides the extraction definition and includes all fields",
             "required": False,
-            },
+        },
         "populated_only": {
             "description": "Only include objects with records. Default is True",
             "required": False,
@@ -86,18 +91,22 @@ class BackupData(BaseSalesforceApiTask):
         super()._init_options(kwargs)
         self.orgname = self.org_config.name
         self.preview = process_bool_arg(self.options.get("preview"))
-        self.include_setup_data = process_bool_arg(self.options.get("include_setup_data"))
+        self.include_setup_data = process_bool_arg(
+            self.options.get("include_setup_data")
+        )
         self.sobjects = process_list_arg(self.options.get("sobjects"))
         self.root_dir = Path(self.project_config.repo_root or "")
         self.populated_only = process_bool_arg(self.options.get("populated_only", True))
         self.extraction_definition = self.extract_file
         # TODO - add support for child references (if Account is speficied, find all objects that have a relationship field relatedTo=Account)
-        self.include_child_references = process_bool_arg(self.options.get("include_children"))
+        self.include_child_references = process_bool_arg(
+            self.options.get("include_children")
+        )
 
     @property
     def path(self) -> Path:
         return self.root_dir / "datasets" / self.orgname / "extracts"
-    
+
     @property
     def data_path(self) -> Path:
         return self.path / f"{self.unix_time}"
@@ -105,11 +114,11 @@ class BackupData(BaseSalesforceApiTask):
     @property
     def extract_file(self) -> Path:
         return self.path / f"{self.unix_time}.extrac-definition.yml"
-    
+
     @property
     def mapping_file(self) -> Path:
         return self.path / f"{self.unix_time}" / f"{self.unix_time}.mapping.yml"
-    
+
     def _csv_path(self, sobject):
         return self.data_path / f"{sobject}.csv"
 
@@ -130,7 +139,7 @@ class BackupData(BaseSalesforceApiTask):
         else:
             opt_in_only = [f["name"] for f in self.tooling.describe()["sobjects"] if f["name"] not in extractable_data]  # type: ignore
             opt_in_only += OPT_IN_ONLY + ["ScratchOrgInfo", "PromptError"]
-        
+
         filters = [Filters.queryable]
         if self.populated_only:
             filters.append(Filters.populated)
@@ -159,7 +168,9 @@ class BackupData(BaseSalesforceApiTask):
             self._build_mapping(include, ignore)
 
             if not self.preview:
-                self.logger.info(f"\n...Extracting data for {len(self.mapping.keys())} objects...")
+                self.logger.info(
+                    f"\n...Extracting data for {len(self.mapping.keys())} objects..."
+                )
                 for mapping in self.mapping.values():
                     sf_object = mapping["sf_object"]
                     self.logger.info(f"\nExtracting data for {sf_object}")
@@ -170,14 +181,21 @@ class BackupData(BaseSalesforceApiTask):
 
     def _build_decls_input(self):
         if self.sobjects:
-            self.decls = {f"{sobject}": ExtractDeclaration(sf_object=sobject, fields=["FIELDS(ALL)"]) for sobject in self.sobjects}
+            self.decls = {
+                f"{sobject}": ExtractDeclaration(
+                    sf_object=sobject, fields=["FIELDS(ALL)"]
+                )
+                for sobject in self.sobjects
+            }
         else:
             if user_provided_def := self.options.get("extraction_definition"):
                 self.extraction_definition = Path(user_provided_def)
                 if not self.extraction_definition.exists():
                     self.extraction_definition = self.extract_file
 
-            self.logger.info(f"\n...Processing extraction definition: {self.extraction_definition}")
+            self.logger.info(
+                f"\n...Processing extraction definition: {self.extraction_definition}"
+            )
             self.decls = ExtractRulesFile.parse_extract(self.extraction_definition)
         return self.decls
 
@@ -185,66 +203,93 @@ class BackupData(BaseSalesforceApiTask):
         self.logger.info("Preview mode enabled. No data will be extracted.\n")
         lb = "-" * 80
         lb = f"\n{lb}\n"
-        decls = {k: {vk: vv for vk, vv in v if vk in ("sf_object", "fields")} for k, v in self.decls.items()}
+        decls = {
+            k: {vk: vv for vk, vv in v if vk in ("sf_object", "fields")}
+            for k, v in self.decls.items()
+        }
         if self.sobjects:
             import yaml
+
             self.logger.info(f"\nExtraction Defenition:{lb}")
             self.logger.info(yaml.safe_dump(decls))
         else:
-            self.logger.info(f"\nExtraction Defenition:{lb}{self.extraction_definition.read_text()}\n")
+            self.logger.info(
+                f"\nExtraction Defenition:{lb}{self.extraction_definition.read_text()}\n"
+            )
         self.logger.info(f"\nMapping YAML:{lb}{self.mapping_file.read_text()}")
         self.logger.info(f"\nSUMMARY{lb}")
-        sorted_mapping = [f"{k['sf_object']} ({len(k['fields'])} {'Fields' if len(k['fields']) > 1 else 'Field'})" 
-                          for k in self.mapping.values()]  
+        sorted_mapping = [
+            f"{k['sf_object']} ({len(k['fields'])} {'Fields' if len(k['fields']) > 1 else 'Field'})"
+            for k in self.mapping.values()
+        ]
         sorted_mapping.sort()
         deli = "\n - "
         if len(self.mapping.keys()) < 20:
             self.logger.info(f"SObjects: {deli}{deli.join(sorted_mapping)}")
         else:
-            self.logger.info(f"SObjects: {deli}{deli.join(sorted_mapping[:10])}\n... (output truncated){deli}{sorted_mapping[-1]}")
+            self.logger.info(
+                f"SObjects: {deli}{deli.join(sorted_mapping[:10])}\n... (output truncated){deli}{sorted_mapping[-1]}"
+            )
         self.logger.info(f"\nNumber of sObjects identified: {len(self.mapping.keys())}")
 
     def _build_mapping(self, include: str, ignore: str):
-        self.logger.info("...Getting related objects and building mapping file for extract")
+        self.logger.info(
+            "...Getting related objects and building mapping file for extract"
+        )
         mappingTask = _make_task(
-            GenerateFullMapping, 
-            project_config=self.project_config, 
+            GenerateFullMapping,
+            project_config=self.project_config,
             org_config=self.org_config,
             logger=self.logger,
             path=self.mapping_file,
             include=include,
             ignore=ignore,
             break_cycles="auto",
-            )
+        )
         mappingTask()
         self.logger.info(f"Mapping saved to : {self.mapping_file}")
         self.mapping = MappingSteps.parse_from_yaml(self.mapping_file)
 
     def _get_extractable_objects(self):
-        not_countable = NOT_COUNTABLE + ("NetworkUserHistoryRecent", "OutgoingEmail", "OutgoingEmailRelation")
+        not_countable = NOT_COUNTABLE + (
+            "NetworkUserHistoryRecent",
+            "OutgoingEmail",
+            "OutgoingEmailRelation",
+        )
         extractable_data = []
 
         if self.include_setup_data:
-            sobjectList = [f for f in self.sf.describe()["sobjects"] 
-                           if f["queryable"] is True
-                           and f["createable"] is True
-                           and f["keyPrefix"] is not None
-                           and f["associateEntityType"] is None
-                           and f["name"] not in not_countable
-                           ]            
+            sobjectList = [
+                f
+                for f in self.sf.describe()["sobjects"]
+                if f["queryable"] is True
+                and f["createable"] is True
+                and f["keyPrefix"] is not None
+                and f["associateEntityType"] is None
+                and f["name"] not in not_countable
+            ]
             extractable_data = [f["name"] for f in sobjectList]
 
         else:
             from tasks.data_ops.get_sobjects import GetSObjects
-            task = _make_task(GetSObjects, project_config=self.project_config, org_config=self.org_config)
+
+            task = _make_task(
+                GetSObjects,
+                project_config=self.project_config,
+                org_config=self.org_config,
+            )
             extractable_data = task()
-            extractable_data = [o for o in set(extractable_data + self.always_include_objects) if o not in not_countable]
+            extractable_data = [
+                o
+                for o in set(extractable_data + self.always_include_objects)
+                if o not in not_countable
+            ]
 
         return extractable_data
 
     def _run_query(self, soql, mapping):
         """Execute a Bulk or REST API query job and store the results."""
-        csvPath = self._csv_path(mapping['sf_object'])
+        csvPath = self._csv_path(mapping["sf_object"])
         field_map = mapping.get_complete_field_map(include_id=True)
         columns = [field_map[f] for f in field_map]
         with open(csvPath, "w") as f:
@@ -279,7 +324,7 @@ class BackupData(BaseSalesforceApiTask):
         writer = csv.writer(open(csvPath, "a"), quoting=csv.QUOTE_ALL)
         for row in record_iterator:
             writer.writerow(row)
-        
+
     def _soql_for_mapping(self, mapping):
         """Return a SOQL query suitable for extracting data for this mapping."""
         sf_object = mapping.sf_object
@@ -298,49 +343,66 @@ class BackupData(BaseSalesforceApiTask):
 
     def create_extract_mapping_file_from_declarations(
         self,
-        decls: T.List[ExtractDeclaration], 
-        schema: Schema, 
-        opt_in_only: T.Sequence[str]
+        decls: T.List[ExtractDeclaration],
+        schema: Schema,
+        opt_in_only: T.Sequence[str],
     ):
         """Create a mapping file sufficient for driving an extract process
         from an extract declarations file."""
         assert decls is not None
-        
+
         # include objects that have lookups to mapped objects
         if self.include_child_references:
             decls = self.include_referencing_objects(decls, schema, opt_in_only)
 
         simplified_decls = flatten_declarations(decls, schema, opt_in_only)
         simplified_decls = classify_and_filter_lookups(simplified_decls, schema)
-        mappings = [self._mapping_decl_for_extract_decl(decl) for decl in simplified_decls]
+        mappings = [
+            self._mapping_decl_for_extract_decl(decl) for decl in simplified_decls
+        ]
         return dict(pair for pair in mappings if pair)
 
-    def include_referencing_objects(self,
-                                    decls: T.List[ExtractDeclaration],
-                                    schema: Schema,
-                                    opt_in_only: T.Sequence[str],
-                                    ) -> T.List[SimplifiedExtractDeclarationWithLookups]:
+    def include_referencing_objects(
+        self,
+        decls: T.List[ExtractDeclaration],
+        schema: Schema,
+        opt_in_only: T.Sequence[str],
+    ) -> T.List[SimplifiedExtractDeclarationWithLookups]:
         """Include objects that have lookups to mapped objects"""
-        base_objects = {decl.sf_object for decl in decls if '(' not in decl.sf_object and decl.sf_object not in NOT_EXTRACTABLE}
+        base_objects = {
+            decl.sf_object
+            for decl in decls
+            if "(" not in decl.sf_object and decl.sf_object not in NOT_EXTRACTABLE
+        }
         mapped_objects = {decl.sf_object for decl in decls}
         if not base_objects:
             return decls
-        self.logger.info(f"Getting objects that reference object declarations: \n{mapped_objects}")
+        self.logger.info(
+            f"Getting objects that reference object declarations: \n{mapped_objects}"
+        )
         referencing_objects = set()
         for obj in schema.keys():
             if obj in base_objects or obj in mapped_objects:
                 continue
             for field in schema[obj]["fields"].values():
                 if field["type"] == "reference" and field["referenceTo"]:
-                    if (any(x in base_objects for x in field["referenceTo"])):
+                    if any(x in base_objects for x in field["referenceTo"]):
                         if not any(x in NOT_EXTRACTABLE for x in field["referenceTo"]):
-                            mapped_objects.add(obj)                    
-                            self.logger.info(f"Adding {obj} because it references {field['referenceTo']}")
-                            fields = ["FIELDS(ALL)"] if obj not in opt_in_only else ["Id"]
-                            referencing_objects.add(ExtractDeclaration(sf_object=obj, fields=fields))
+                            mapped_objects.add(obj)
+                            self.logger.info(
+                                f"Adding {obj} because it references {field['referenceTo']}"
+                            )
+                            fields = (
+                                ["FIELDS(ALL)"] if obj not in opt_in_only else ["Id"]
+                            )
+                            referencing_objects.add(
+                                ExtractDeclaration(sf_object=obj, fields=fields)
+                            )
                             break
         combined = decls + list(referencing_objects)
-        self.logger.info(f"Added {len(referencing_objects)} objects that reference mapped objects")
+        self.logger.info(
+            f"Added {len(referencing_objects)} objects that reference mapped objects"
+        )
         return combined
 
     def _mapping_decl_for_extract_decl(
@@ -415,7 +477,7 @@ class ExtractBackup(ExtractData):
             drop_missing=self.options["drop_missing_schema"],
             org_has_person_accounts_enabled=self.org_config.is_person_accounts_enabled,
         )
-    
+
     def _map_autopks(self):
         # Convert Salesforce Ids to autopks
         for m in self.mapping.values():
@@ -429,9 +491,9 @@ def list_todo(logger):
 
     todolist = [
         "Add database support",
-        "Add support for PK encryption of extracted data",
-        ]
-    
+        "Add support for PKI encryption of extracted data",
+    ]
+
     lb = "-" * 80
     lb = f"\n{lb}\n"
     deli = "\n - "

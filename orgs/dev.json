@@ -1,24 +1,29 @@
 {
-  "orgName": "cci-tasks - Dev Org",
-  "edition": "Developer",
-  "settings": {
-    "lightningExperienceSettings": {
-      "enableS1DesktopEnabled": true
-    },
-    "chatterSettings": {
-      "enableChatter": true
-    },
-    "userManagementSettings": {
-      "enableNewProfileUI": true
-    },
-    "securitySettings": {
-      "enableAdminLoginAsAnyUser": true,
-      "sessionSettings": {
-        "forceRelogin": false
-      }
-    },
-    "languageSettings": {
-      "enableTranslationWorkbench": true
+    "orgName": "cci-tasks - Dev Org",
+    "edition": "Developer",
+    "features": ["EnableSetPasswordInApi", "ExternalClientApps", "ExtlClntAppSecretExposeCtl"],
+    "hasSampleData": true,
+    "settings": {
+        "externalClientAppSettings": {
+            "enableExternalClientApps": true
+        },
+        "lightningExperienceSettings": {
+            "enableS1DesktopEnabled": true
+        },
+        "chatterSettings": {
+            "enableChatter": true
+        },
+        "userManagementSettings": {
+            "enableNewProfileUI": true
+        },
+        "securitySettings": {
+            "enableAdminLoginAsAnyUser": true,
+            "sessionSettings": {
+                "forceRelogin": false
+            }
+        },
+        "languageSettings": {
+            "enableTranslationWorkbench": true
+        }
     }
-  }
 }

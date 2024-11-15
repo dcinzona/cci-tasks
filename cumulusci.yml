@@ -1,12 +1,12 @@
 minimum_cumulusci_version: "3.90.0"
 project:
-  name: cci-tasks
-  package:
     name: cci-tasks
-    api_version: "61.0"
-  git:
-    default_branch: "main"
-  source_format: sfdx
+    package:
+        name: cci-tasks
+        api_version: "61.0"
+    git:
+        default_branch: "main"
+    source_format: sfdx
 
 orgs:
     scratch:
@@ -18,65 +18,69 @@ orgs:
             config_file: orgs/dev.json
         pa:
             config_file: orgs/person-accounts.json
-    
 
 tasks:
-  
-  play:
-    class_path: tasks.playground.Playground
-  
-  update_help_text:
-    class_path: tasks.update_help_text.UpdateHelpText
-    group: Metadata Operations
+    play:
+        class_path: tasks.playground.Playground
 
-  generate_dataset_mapping:
-    class_path: tasks.data_ops.generate_full_mapping.GenerateFullMapping
-    group: Data Operations
-  backup_data:
-    class_path: tasks.data_ops.backup_data.BackupData
-    group: Data Operations
-    options: 
-      extraction_definition: datasets/extract_accounts.yml
-  extract_data_with_mapping:
-    class_path: tasks.data_ops.backup_data.ExtractData
-    group: Data Operations
-    options: 
-      mapping: datasets/mapping.yml
+    update_help_text:
+        class_path: tasks.update_help_text.UpdateHelpText
+        group: Metadata Operations
 
-  install_package:
-    class_path: tasks.packaging.installPackage.InstallPackageDeps
-    group: Packaging
-  get_dependencies:
-    class_path: tasks.packaging.getDependencies.GetDependencies
-    group: Packaging
+    generate_dataset_mapping:
+        class_path: tasks.data_ops.generate_full_mapping.GenerateFullMapping
+        group: Data Operations
 
-  idp_connected_app:
-    class_path: tasks.identity.idpDeploy.deployMetadata
-    group: Identity
-  sp_post_deploy:
-    class_path: tasks.identity.spDeploy.deploySSO
-    group: Identity
-  retrieve_cert:
-    class_path: tasks.identity.spDeploy.RetrieveCert
-    group: Identity
+    backup_data:
+        class_path: tasks.data_ops.backup_data.BackupData
+        group: Data Operations
+        options:
+            extraction_definition: datasets/extract_all.yml
+            preview: true
+            include_children: true
+            populated_only: true
+            include_setup_data: true
 
-  clean_test_results:
-    class_path: cumulusci.tasks.command.Command
-    group: Tests
-    options: 
-      command: rm -rf robot/sso/results/*
-  
-  robot:
-    options:
-      suites: robot/cci-tasks/tests
-      options:
-        outputdir: robot/cci-tasks/results
+    extract_data_with_mapping:
+        class_path: tasks.data_ops.backup_data.ExtractData
+        group: Data Operations
+        options:
+            mapping: datasets/mapping.yml
 
-  robot_testdoc:
-    options:
-      path: robot/cci-tasks/tests
-      output: robot/cci-tasks/doc/cci-tasks_tests.html
+    install_package:
+        class_path: tasks.packaging.installPackage.InstallPackageDeps
+        group: Packaging
+    get_dependencies:
+        class_path: tasks.packaging.getDependencies.GetDependencies
+        group: Packaging
 
-  run_tests:
-    options:
-      required_org_code_coverage_percent: 75
+    idp_connected_app:
+        class_path: tasks.identity.idpDeploy.deployMetadata
+        group: Identity
+    sp_post_deploy:
+        class_path: tasks.identity.spDeploy.deploySSO
+        group: Identity
+    retrieve_cert:
+        class_path: tasks.identity.spDeploy.RetrieveCert
+        group: Identity
+
+    clean_test_results:
+        class_path: cumulusci.tasks.command.Command
+        group: Tests
+        options:
+            command: rm -rf robot/sso/results/*
+
+    robot:
+        options:
+            suites: robot/cci-tasks/tests
+            options:
+                outputdir: robot/cci-tasks/results
+
+    robot_testdoc:
+        options:
+            path: robot/cci-tasks/tests
+            output: robot/cci-tasks/doc/cci-tasks_tests.html
+
+    run_tests:
+        options:
+            required_org_code_coverage_percent: 75
