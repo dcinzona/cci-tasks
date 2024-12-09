@@ -1,0 +1,64 @@
+#  cci task run snowfakery --run-until-records-in-org Account:200000 --recipe datasets/recipe.yml --org <alias>
+# Highly randomized objects
+- object: Account
+  fields:
+      Name:
+          fake: Company
+      Description:
+          fake: CatchPhrase
+      BillingStreet:
+          fake: StreetAddress
+      BillingCity:
+          fake: City
+      BillingState:
+          fake: state
+      BillingPostalCode:
+          fake: Postalcode
+      BillingCountry: Canada
+      ShippingStreet:
+          fake: StreetAddress
+      ShippingCity:
+          fake: City
+      ShippingState:
+          fake: State
+      ShippingPostalCode:
+          fake: PostalCode
+      ShippingCountry:
+          fake: Country
+      Phone:
+          fake: PhoneNumber
+      Fax:
+          fake: PhoneNumber
+      Website:
+          fake: uri
+      NumberOfEmployees:
+          random_number:
+              min: 0
+              max: 200000
+      AccountNumber:
+          random_number:
+              min: 0
+              max: 10000000
+
+- object: Contact
+  fields:
+      Salutation:
+          fake: prefix
+      FirstName:
+          fake: FirstName
+      LastName:
+          fake: LastName
+      Email:
+          fake: email
+      Phone:
+          fake: PhoneNumber
+      MobilePhone:
+          fake: PhoneNumber
+      Title:
+          fake: job
+      Birthdate:
+          date_between:
+              start_date: -50y
+              end_date: -20y
+      AccountId:
+          reference: Account
