@@ -3,6 +3,7 @@ import { ShowToastEvent } from 'lightning/platformShowToastEvent';
 import searchLookupRecords from '@salesforce/apex/customUserSearchController.searchLookupRecords'; // Apex method 
 import getRecentlyCreatedRecord from '@salesforce/apex/customUserSearchController.getRecentlyCreatedRecord'; // Apex method 
 import getCurrentValueForRecord from '@salesforce/apex/customUserSearchController.getCurrentValueForRecord';
+import { getObjectInfo } from 'lightning/uiObjectInfoApi';
 
 const MINIMAL_SEARCH_TERM_LENGTH = 1; // Min number of chars required to search
 const SEARCH_DELAY = 300; // Wait 300 ms after user stops typing then, peform search
@@ -59,6 +60,13 @@ export default class UserLookup extends LightningElement {
         }
     }
 
+    @wire(getObjectInfo, { objectApiName: '$objectApiName' })
+    objInfo({ data, error }) {
+        if (data) {
+            this.label = data.fields[this.lookupFieldApiName].label;
+            console.log('data', data);
+        }
+    }
     connectedCallback() {
         
         this.isLoading = true;
