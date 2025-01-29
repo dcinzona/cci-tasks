@@ -73,9 +73,7 @@ export default class UserLookup extends LightningElement {
                     this.notifyUser('Error', error.body.message || error.message, 'error');
                     this.isLoading = false;
                 });
-        } else {
-            this.isLoading = false;
-        }
+        } 
 
     }
 
