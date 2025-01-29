@@ -5,28 +5,21 @@
     <masterLabel>User Search LWC</masterLabel>
     <description>Proof of concept for searching for users</description>
     <targets>
-        <target>lightning__AppPage</target>
-        <target>lightning__HomePage</target>
-        <target>lightning__FlowScreen</target>
         <target>lightning__RecordPage</target>
     </targets>
    <targetConfigs>
-         <targetConfig targets="lightning__AppPage, lightning__HomePage, lightning__RecordPage">
-             <property name="maxRowSelection" type="Integer" default="5" />
-             <property name="objectApiLabel" type="String" />
+         <targetConfig targets="lightning__RecordPage">
+             <property name="maxRowSelection" type="Integer" default="1" />
              <property
                name="objectApiName"
                type="String"
-               label="Object NAPI ame"
+               label="Object API Name"
                description="Automatically bind the page's object name to the component variable"
-               default="{!objectApiName}"
+               datasource="apex://pocBuilderSobjectSelector"
              />
              <property name="showCard" type="Boolean" />
-             <property name="lookupFieldApiName" type="String" />
-         </targetConfig>
-         <targetConfig targets="lightning__FlowScreen">
-            <property name="selectedUsers" label="Selected Users" type="@salesforce/schema/User[]" />
-            <property name="maxRowSelection" type="Integer" default="5" />
+             <property name="lookupFieldApiName" label="User Lookup Field" type="String"
+                datasource="apex://UserLookupFieldPicklist" />
          </targetConfig>
    </targetConfigs>
 </LightningComponentBundle>

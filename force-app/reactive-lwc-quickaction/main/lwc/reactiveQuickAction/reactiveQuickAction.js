@@ -75,16 +75,18 @@ export default class ReactiveQuickAction extends LightningElement {
         this[event.target.dataset.id] = val;
     }
 
-    async handleSubmit(event) {
-        const { error, recId } = await createChildRecord({
+    handleSubmit(event) {
+        createChildRecord({
             objectApiName: "Contact",
             fields: {
                 FirstName: this.firstname,
                 LastName: this.lastname,
                 AccountId: this.recordId
             }
-        });
-        if (error) {
+        }).then((result) => {
+            console.log("result => ", result);
+            this.sendCloseEvents(result);
+        }).catch((error) => {
             // Display a toast notification
             this.dispatchEvent(
                 new ShowToastEvent({
@@ -93,9 +95,7 @@ export default class ReactiveQuickAction extends LightningElement {
                     variant: "error"
                 })
             );
-        } else {
-            this.sendCloseEvents(recId);
-        }
+        });
     }
 
     handleCancel(event) {
@@ -130,7 +130,7 @@ export default class ReactiveQuickAction extends LightningElement {
         } else {
             // Fire the custom event (this is for the AURA wrapper to refresh the UI)
             const doneEvent = new CustomEvent("processcomplete", {
-                detail: { result: result }
+                detail: { result: result.id }
             });
             this.dispatchEvent(doneEvent);
         }
