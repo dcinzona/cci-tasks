@@ -125,15 +125,20 @@ def _expand_group_sobject_declaration(decl: ExtractDeclaration, schema: Schema):
     else:  # pragma: no cover
         assert 0, decl.group_type
 
-    matching_objects = [
-        obj["name"] for obj in schema.sobjects if matches_obj(obj) and obj.count >= 1
-    ]
+    matching_objects = []
+    for obj in schema.sobjects:
+        if obj.count is None:
+            print(f"Count is None for {obj['name']}")
+            continue
+        if matches_obj(obj) and obj.count >= 1:
+            matching_objects.append(obj["name"])
+    
     decls = [
         synthesize_declaration_for_sobject(obj, decl.fields, schema[obj].fields)
         for obj in matching_objects
     ]
-
     return decls
+
 
 
 def _expand_field_definitions(

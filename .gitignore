@@ -56,3 +56,4 @@ $RECYCLE.BIN/
 force-app/temp/**
 .pmdCache
 package-lock.json
+datasets/**
