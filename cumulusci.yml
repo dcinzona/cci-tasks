@@ -27,22 +27,22 @@ tasks:
         class_path: tasks.update_help_text.UpdateHelpText
         group: Metadata Operations
 
-    generate_dataset_mapping:
+    generate_full_mapping:
         class_path: tasks.data_ops.generate_full_mapping.GenerateFullMapping
         group: Data Operations
     
     list_sobjects:
         class_path: tasks.data_ops.get_sobjects.GetSObjects
         group: Data Operations
+        options:
+            print: true
 
-    backup_data:
+    backup:
         class_path: tasks.data_ops.backup_data.BackupData
         group: Data Operations
         options:
             extraction_definition: datasets/extract_all.yml
-            preview: true
             include_children: true
-            populated_only: false
             include_setup_data: false
 
     extract_data_with_mapping:

@@ -1,13 +1,13 @@
 from collections import defaultdict
 import yaml
-import re
 import copy
 
 from tasks.data_ops.overrides import init_overrides
-from cumulusci.salesforce_api.filterable_objects import NOT_EXTRACTABLE, NOT_COUNTABLE
-from cumulusci.salesforce_api.org_schema import get_org_schema, Filters
+from tasks.data_ops.filterable_objects import NOT_EXTRACTABLE, sobject_is_valid
+from cumulusci.salesforce_api.org_schema import Filters, get_org_schema
 from cumulusci.tasks.bulkdata.generate_mapping import GenerateMapping
-from cumulusci.core.utils import process_bool_arg
+from cumulusci.core.utils import process_bool_arg, process_list_arg
+from cumulusci.core.exceptions import TaskOptionsError
 
 generate_options = copy.deepcopy(GenerateMapping.task_options)
 generate_options["exclude_setup_objects"] = {
@@ -22,38 +22,75 @@ class GenerateFullMapping(GenerateMapping):
     exclude_setup_objects = True
 
     def _init_options(self, kwargs):
-        super()._init_options(kwargs)
-        self.options["ignore"] = self.options.get("ignore", [])
-        self.ignore = self.options["ignore"]
-        self.options["strip_namespace"] = self.options.get("strip_namespace", False)
-        self.options["break_cycles"] = self.options.get("break_cycles", 'auto')
+        init_overrides()
+        super(GenerateFullMapping, self)._init_options(kwargs)
+
+        if "namespace_prefix" not in self.options:
+            self.options["namespace_prefix"] = ""
+
+        if self.options["namespace_prefix"] and not self.options[
+            "namespace_prefix"
+        ].endswith("__"):
+            self.options["namespace_prefix"] += "__"
+
+        self.options["ignore"] = process_list_arg(self.options.get("ignore", []))
+        break_cycles = self.options.setdefault("break_cycles", "ask")
+        if break_cycles not in ["ask", "auto"]:
+            raise TaskOptionsError(
+                f"`break_cycles` should be `ask` or `auto`, not {break_cycles}"
+            )
+        self.options["include"] = process_list_arg(self.options.get("include", []))
+        strip_namespace = self.options.get("strip_namespace")
+
+        self.options["strip_namespace"] = process_bool_arg(
+            True if strip_namespace is None else strip_namespace
+        )
         self.exclude_setup_objects = process_bool_arg(
             self.options.get("exclude_setup_objects", True)
         )
 
     def _run_task(self):
-        always_include = ["User", "Group"]
-        self.logger.info("Collecting sObject information")
-        self.get_all_objects = len(self.options["include"]) == 0
-        self.toolingObjects = [f['name'] for f in self.tooling.describe()["sobjects"] if f['name'] not in always_include]
-        self.apisobjects = [f["name"] for f in self.sf.describe()["sobjects"]] + always_include
-        self.not_extractable = [f for f in NOT_EXTRACTABLE if f not in always_include] + self.ignore
+        self.logger.info("Running GenerateFullMapping\n")
+        self.logger.info("...Collecting SObject information")
+        self.sobjects = [f["name"] for f in self.sf.describe()["sobjects"]]
+        self.logger.info("...Collecting Tooling Object information")
+        self.toolingObjects = [f['name'] for f in self.tooling.describe()["sobjects"]]
+        self.not_extractable = [f for f in NOT_EXTRACTABLE] + self.options["ignore"]
 
-        self.not_extractable += self.toolingObjects if self.exclude_setup_objects else []
-        
+        if not self.exclude_setup_objects:
+            self.sobjects += self.toolingObjects
+
         self.not_extractable = list(set(self.not_extractable))
         self.not_extractable.sort()
 
-        objects_to_include = self.options["include"] if not self.get_all_objects else self.apisobjects + self.toolingObjects
+        self.logger.info("...Apply extractable filter checks")
+        self.valid_schema_objects = set(
+            o
+            for o in self.sobjects
+            if sobject_is_valid(o, patterns=self.not_extractable)
+        )
 
-        # self.logger.info(f"not_extractable objects: {self.not_extractable}")
+        if not any(self.options['include']):
+            self.logger.info("No objects specified so including all valid objects")
+            self.options['include'] = self.valid_schema_objects
 
-        with get_org_schema(sf=self.sf, 
-                            org_config=self.org_config,
-                            include_counts=False,
-                            included_objects=objects_to_include,
-                            force_recache=False,
-                            ) as org_schema:
+        with get_org_schema(
+            sf=self.sf,
+            org_config=self.org_config,
+            include_counts=False,
+            included_objects=self.valid_schema_objects,
+            filters=[Filters.queryable, Filters.createable],
+            force_recache=False,
+        ) as org_schema:
+            self.valid_schema_objects = set(org_schema.keys())
+            self.valid_included_objects = set(self.options["include"]).intersection(
+                self.valid_schema_objects
+            )
+            assert "User" in self.valid_schema_objects, "User object not found in org"
+            if not self.valid_included_objects:
+                raise TaskOptionsError(
+                    f"No valid objects to include in the mapping.  Valid objects are: {self.sobjects}"
+                )
             self._collect_objects(org_schema)
             self._simplify_schema(org_schema)
         filename = self.options["path"]
@@ -66,20 +103,37 @@ class GenerateFullMapping(GenerateMapping):
 
     def _collect_objects(self, org_schema):
         """Walk the global describe and identify the sObjects we need to include in a minimal operation."""
-        self.mapping_objects = []  # self.options["include"]
 
+        self.mapping_objects = self.options['include']
+        unknown_objects = set(self.mapping_objects) - self.valid_schema_objects
+
+        if unknown_objects:
+            raise TaskOptionsError(f"{unknown_objects} cannot be found in the org.")
+
+        # sorted_objects = sorted(self.valid_schema_objects)
+        # self.logger.info(sorted_objects)
+        # self.logger.info(f"Number of objects: {len(self.valid_schema_objects)}")
+        # exit()
+        # If we weren't given any objects to map, we'll start with all
         # First, we'll get a list of all objects that are either
-        # (a) custom, no namespace
-        # (b) custom, with our namespace
-        # (c) not ours (standard or other package), but have fields with our namespace or no namespace
-        for objname, obj in org_schema.items():
-            if obj is not None and objname not in self.not_extractable and self._is_object_mappable(obj) and objname not in self.mapping_objects:
-                self.mapping_objects.append(objname)
-
-        if self.get_all_objects:
-            # no need to find references if we're getting everything
-            self.logger.info("Including all objects")
+        if not any(self.mapping_objects):
+            for objname, obj in org_schema.items():
+                if obj is not None and self._is_object_mappable(obj) and objname not in self.mapping_objects:
+                    self.mapping_objects.append(objname)
             return
+        # else:  # Let's find objects that we require
+        #     for obj in self.mapping_objects:
+        #         for field in org_schema[obj].fields.values():
+        #             if field["type"] == "reference":
+        #                 new_objects = [
+        #                     obj
+        #                     for obj in field["referenceTo"]
+        #                     if obj not in self.mapping_objects and obj in self.valid_schema_objects
+        #                 ]
+        #                 if any(new_objects):
+        #                     self.logger.info(f"Adding {new_objects} for {obj}.{field['name']}")
+        #                     self.mapping_objects.extend(new_objects)
+
         # Add any objects that are required by our own,
         # meaning any object we are looking up to with a custom field,
         # or any master-detail parent of any included object.
@@ -88,22 +142,22 @@ class GenerateFullMapping(GenerateMapping):
             obj = self.mapping_objects[index]
             for field in org_schema[obj].fields.values():
                 if field["type"] == "reference":
-                    if field["relationshipOrder"] == 1 or self._is_any_custom_api_name(
-                        field["name"]
-                    ):
-                        self.mapping_objects.extend(
-                            [
-                                obj
-                                for obj in field["referenceTo"]
-                                if obj not in self.mapping_objects
-                                and obj not in self.not_extractable
-                                and self._is_object_mappable(org_schema[obj])
-                            ]
-                        )
+                    # if field["relationshipOrder"] == 1 or self._is_any_custom_api_name(
+                    #     field["name"]
+                    # ):
+                    new_objects = [
+                        obj
+                        for obj in field["referenceTo"]
+                        if obj not in self.mapping_objects and obj in self.valid_schema_objects
+                    ]
+                    if any(new_objects):                                
+                        self.logger.info(f"Adding {new_objects} for {obj}.{field['name']}")
+                        self.mapping_objects.extend(new_objects)
 
             index += 1
 
     def _simplify_schema(self, org_schema):
+        self.logger.info("...Simplifying schema")
         """Override to exclude compound fields and include Ids
 
         Simplify and filter schema, including field details and interobject
@@ -115,23 +169,16 @@ class GenerateFullMapping(GenerateMapping):
         for obj in self.mapping_objects:
             # self.logger.info(f"Processing {obj}")
             self.simple_schema[obj] = {}
-            compoundFields = set([f"{c}" for c in 
-                                 [field["compoundFieldName"] for field in org_schema[obj]["fields"].values() 
-                                  if field["compoundFieldName"] 
-                                  and field["compoundFieldName"] != "Name"
-                                  ]])
-            # if len(list(compoundFields)) > 0:
-            #     self.logger.info(f"Compound fields ignored in {obj}: {[f for f in compoundFields]}")
 
             for field in org_schema[obj]["fields"].values():
-                if self._is_field_mappable(obj, field, compoundFields):
+                if self._is_field_mappable(obj, field):
                     self.simple_schema[obj][field["name"]] = field
 
                     if field["type"] == "reference":
                         for target in field["referenceTo"]:
                             # We've already vetted that this field is referencing
                             # included objects, via `_is_field_mappable()`
-                            if target != obj:
+                            if target != obj and target not in ("User", "Group"):
                                 self.refs[obj][target][field["name"]] = field
 
                 if (
@@ -156,6 +203,7 @@ class GenerateFullMapping(GenerateMapping):
                 return element
 
         self.mapping = {}
+        self.logger.info("...Building mapping stacks")
         for orig_obj in stack:
             # Check if it's safe for us to strip the namespace from this object
             stripped_obj = strip_namespace(orig_obj)
@@ -168,8 +216,8 @@ class GenerateFullMapping(GenerateMapping):
             lookups = []
             for field in self.simple_schema[orig_obj].values():
                 """Enables lookup references to be populated to non-extactable objects"""
-                if obj in NOT_EXTRACTABLE and field["name"] not in ("Id") and obj != "RecordType":
-                    continue                
+                if not sobject_is_valid(obj) and field["name"] not in ("Id") and obj != "RecordType":
+                    continue
                 if field["type"] == "reference" and field["name"] != "RecordTypeId":
                     # For lookups, namespace stripping takes place below.
                     lookups.append(field["name"]) if len(field["referenceTo"]) > 0 else None
@@ -232,26 +280,24 @@ class GenerateFullMapping(GenerateMapping):
 
         return not any(
             [
-                any(
-                    re.match(pat.replace("%", ".*"), obj["name"], re.IGNORECASE) for pat in self.not_extractable
-                ),
-                obj["name"] in self.options["ignore"],  # User-specified exclusions
-                obj["name"].endswith(
-                    "ChangeEvent"
-                ),  # Change Data Capture entities (which get custom fields)
-                obj["name"].endswith("__mdt"),  # Custom Metadata Types (MDAPI only)
-                obj["name"].endswith("__e"),  # Platform Events
-                obj["customSetting"],  # Not Bulk API compatible
-                obj["name"]  # Objects we can't or shouldn't load/save
-                in [
-                    # "User",  # we want to include User Ids
-                    # "Group", # we want to include Group Ids
-                    "LookedUpFromActivity",
-                    "OpenActivity",
-                    "Task",
-                    "Event",
-                    "ActivityHistory",
-                ],
+                not sobject_is_valid(obj=obj, patterns=self.not_extractable),
+                # obj["name"] in self.options["ignore"],  # User-specified exclusions
+                # obj["name"].endswith(
+                #     "ChangeEvent"
+                # ),  # Change Data Capture entities (which get custom fields)
+                # obj["name"].endswith("__mdt"),  # Custom Metadata Types (MDAPI only)
+                # obj["name"].endswith("__e"),  # Platform Events
+                # obj["customSetting"],  # Not Bulk API compatible
+                # obj["name"]  # Objects we can't or shouldn't load/save
+                # in [
+                #     # "User",  # we want to include User Ids
+                #     # "Group", # we want to include Group Ids
+                #     "LookedUpFromActivity",
+                #     "OpenActivity",
+                #     "Task",
+                #     "Event",
+                #     "ActivityHistory",
+                # ],
             ]
         )
 
@@ -263,8 +309,7 @@ class GenerateFullMapping(GenerateMapping):
         in this operation)."""
         return not any(
             [
-                field["name"] in compoundFieldNames 
-                and field["name"] != "Name",
+                field["compoundFieldName"] and field["compoundFieldName"] != "Name",
                 # field["name"] == "Id",  # Omit Id fields for auto-pks # we need record ids for extracts
                 f"{obj}.{field['name']}" in self.options["ignore"],  # User-ignored list
                 "(Deprecated)" in field["label"],  # Deprecated managed fields

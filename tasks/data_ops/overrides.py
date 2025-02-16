@@ -1,6 +1,11 @@
 from typing import Mapping
 from cumulusci.tasks.bulkdata.step import DataOperationType
-from cumulusci.tasks.bulkdata.mapping_parser import MappingStep
+import cumulusci.tasks.bulkdata.mapping_parser
+from tasks.data_ops.filterable_objects import (
+    OPT_IN_ONLY,
+    NOT_COUNTABLE,
+    NOT_EXTRACTABLE,
+)
 
 is_backup_patched = False
 
@@ -13,7 +18,7 @@ def init_overrides():
         # print(inspect.getsource(MappingStep._check_field_permission))
         return
     is_backup_patched = True
-    print("\nApplying custom overrides\n")
+    # print(" >>> Applying custom overrides <<< \n")
 
     def custom_check_field_permission(
         self, describe: Mapping, field: str, operation: DataOperationType
@@ -28,4 +33,12 @@ def init_overrides():
             for perm in perms
         )
 
-    MappingStep._check_field_permission = custom_check_field_permission
+    cumulusci.tasks.bulkdata.mapping_parser.MappingStep._check_field_permission = (
+        custom_check_field_permission
+    )
+    
+    cumulusci.salesforce_api.filterable_objects.OPT_IN_ONLY = OPT_IN_ONLY
+    cumulusci.salesforce_api.filterable_objects.NOT_COUNTABLE = NOT_COUNTABLE
+    cumulusci.salesforce_api.filterable_objects.NOT_EXTRACTABLE = NOT_EXTRACTABLE
+
+    return ' >>> Custom overrides applied <<< \n'

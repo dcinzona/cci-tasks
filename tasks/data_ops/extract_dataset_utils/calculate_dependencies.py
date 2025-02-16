@@ -100,18 +100,11 @@ def extend_declarations_to_include_referenced_tables(
                     required_fields = [
                         field.name
                         for field in schema[target_table].fields.values()
-                        # if field.createable and field.nillable is False
                     ]
 
                     decls[target_table] = synthesize_declaration_for_sobject(
                         target_table, required_fields, schema[target_table].fields
                     )
-
-                    # if target_table in NOT_EXTRACTABLE:
-                    #     # raise ValueError(
-                    #     #     f"Cannot extract {target_table} because it is not extractable.\n decls: {decls}"
-                    #     # )
-                    #     continue
 
                     new_dependencies = _collect_dependencies_for_sobject(
                         target_table,

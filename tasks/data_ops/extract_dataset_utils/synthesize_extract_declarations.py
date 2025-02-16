@@ -4,12 +4,12 @@ import typing as T
 from cumulusci.tasks.bulkdata.extract_dataset_utils.synthesize_extract_declarations import (
     SimplifiedExtractDeclaration,
 )
+
 from cumulusci.salesforce_api.org_schema import (
-    # NOT_COUNTABLE,
     Field,
-    Schema,
-    NOT_EXTRACTABLE,
+    Schema
 )
+
 from cumulusci.utils.iterators import partition
 
 from cumulusci.tasks.bulkdata.extract_dataset_utils.extract_yml import (
@@ -30,28 +30,35 @@ def flatten_declarations(
 
     # pretend all fields are required on create
 
-    for obj in schema.keys():
-        for field in schema[obj]["fields"].values():
-            field.defaultValue = None
-            field.nillable = False
-            field.defaultedOnCreate = False
-            field.createable = True
-    # assert schema.includes_counts, "Schema object was not set up with `includes_counts`"
-    simplified_declarations = _simplify_sfobject_declarations(
-        declarations, schema, opt_in_only
-    )
+    try:
+        for obj in schema.keys():
+            for field in schema[obj]["fields"].values():
+                field.defaultValue = None
+                field.nillable = False
+                field.defaultedOnCreate = False
+                field.createable = True
+        # assert schema.includes_counts, "Schema object was not set up with `includes_counts`"
+        simplified_declarations = _simplify_sfobject_declarations(
+            declarations, schema, opt_in_only
+        )
 
-    from .calculate_dependencies import extend_declarations_to_include_referenced_tables
+        from .calculate_dependencies import extend_declarations_to_include_referenced_tables
 
-    simplified_declarations = extend_declarations_to_include_referenced_tables(
-        simplified_declarations, schema
-    )
+        simplified_declarations = extend_declarations_to_include_referenced_tables(
+            simplified_declarations, schema
+        )
+    except Exception as e:
+        print(e)
+        print(declarations)
+        return declarations
 
     return simplified_declarations
 
 
 def _simplify_sfobject_declarations(
-    declarations, schema: Schema, opt_in_only: T.Sequence[str]
+    declarations: T.Iterable[ExtractDeclaration],
+    schema: Schema,
+    opt_in_only: T.Sequence[str],
 ) -> T.List[SimplifiedExtractDeclaration]:
     """Generate a new list of declarations such that all sf_object patterns
     (like OBJECTS(CUSTOM)) have been expanded into many declarations
@@ -140,7 +147,6 @@ def _expand_group_sobject_declaration(decl: ExtractDeclaration, schema: Schema):
     return decls
 
 
-
 def _expand_field_definitions(
     sobject_decl: ExtractDeclaration, schema_fields: T.Dict[str, Field]
 ) -> SimplifiedExtractDeclaration:
@@ -213,12 +219,12 @@ def synthesize_declaration_for_sobject(
         )
         return ret
     else:
-        if sf_object in NOT_EXTRACTABLE:
-            # fields = [f["name"] for f in schema_fields.values() if not f["nillable"]] or ["Id"]
-            fields = ["Id"]
-            # raise ValueError(
-            #     f"Cannot extract {sf_object} because it is not extractable.\n Required fields: {fields}"
-            # )
+        # if sf_object in NOT_EXTRACTABLE:
+        #     fields = [f["name"] for f in schema_fields.values() if not f["nillable"]] or ["Id"]
+        #     # fields = ["Id"]
+        #     # raise ValueError(
+        #     #     f"Cannot extract {sf_object} because it is not extractable.\n Required fields: {fields}"
+        #     # )
         return SimplifiedExtractDeclaration(sf_object=sf_object, fields=fields)
 
 
