@@ -42,8 +42,10 @@ tasks:
         group: Data Operations
         options:
             extraction_definition: datasets/extract_all.yml
+            execute: false
             include_children: true
             include_setup_data: false
+            include_files: true
 
     extract_data_with_mapping:
         class_path: tasks.data_ops.backup_data.ExtractData

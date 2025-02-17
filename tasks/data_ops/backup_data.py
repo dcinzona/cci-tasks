@@ -30,11 +30,14 @@ from cumulusci.tasks.bulkdata.extract_dataset_utils.extract_yml import (
     ExtractDeclaration,
 )
 from cumulusci.tasks.bulkdata.mapping_parser import validate_and_inject_mapping
-from cumulusci.tasks.bulkdata.step import DataOperationType
+from cumulusci.tasks.bulkdata.step import (
+    DataOperationType,
+    DataOperationStatus,
+    get_query_operation,
+)
 from cumulusci.core.exceptions import TaskOptionsError
 from cumulusci.salesforce_api.org_schema import Schema
 from cumulusci.core.utils import process_bool_arg, process_list_arg
-from cumulusci.tasks.bulkdata.step import DataOperationStatus, get_query_operation
 from cumulusci.utils import log_progress
 from tasks.data_ops.overrides import init_overrides
 
@@ -82,6 +85,10 @@ class BackupData(BaseSalesforceApiTask):
             "description": "Exclude sObjects defined by lookup / reference fields from the extraction. Default is False",
             "required": False,
         },
+        "include_files": {
+            "description": "Include files in the extraction. Default is False",
+            "required": False,
+        },
     }
 
     always_include_objects = ["User", "Group"]
@@ -98,7 +105,10 @@ class BackupData(BaseSalesforceApiTask):
         )
         self.sobjects = process_list_arg(self.options.get("sobjects"))
         self.root_dir = Path(self.project_config.repo_root or "")
-        self.populated_only = process_bool_arg(self.options.get("populated_only", False))
+        self.populated_only = process_bool_arg(
+            self.options.get("populated_only", False)
+        )
+        self.include_files = process_bool_arg(self.options.get("include_files", False))
 
         user_provided_def = self.options.get("extraction_definition")
         if user_provided_def:
@@ -206,20 +216,20 @@ class BackupData(BaseSalesforceApiTask):
                     soql = self._soql_for_mapping(mapping)
                     self._run_query(soql, mapping)
 
-            self.print_summary()
+                if self.include_files:
+                    self.logger.info("...Extracting files")
 
-            mappedobjects = [f["sf_object"] for f in self.mapping.values()]
-            self.logger.info(
-                f"\nOriginal extract objects vs final mapping: {len(sobjectArray)} vs {len(mappedobjects)}"
-            )
-            d1 = (
-                set(sobjectArray) - set(mappedobjects)
-                if len(sobjectArray) > len(mappedobjects)
-                else set(mappedobjects) - set(sobjectArray)
-            )
-            deltarecords = list(d1)
-            deltarecords.sort()
-            self.logger.info(f"delta objects: {deltarecords}")
+                    from cumulusci.tasks.salesforce.salesforce_files import RetrieveFiles
+                    retrieveFilesTask = _make_task(
+                        RetrieveFiles,
+                        project_config=self.project_config,
+                        org_config=self.org_config,
+                        path=self.data_path / "Files",
+                    )
+                    retrieveFilesTask()
+            # self._extract_files():
+
+            self.print_summary()
 
     def _build_decls_input(self, schema: Schema):
         """Build the input declarations for the extract process (this will also explode group declarations)"""
@@ -327,6 +337,21 @@ class BackupData(BaseSalesforceApiTask):
             )
 
         self.logger.info(f"\nNumber of sObjects identified: {len(self.mapping.keys())}")
+        if self.include_files:
+            available_files = [
+                {
+                    "Id": result["Id"],
+                    "FileName": result["Title"],
+                    "FileType": result["FileType"],
+                    "VersionData": result["VersionData"],
+                    "ContentDocumentId": result["ContentDocumentId"],
+                }
+                for result in self.sf.query(
+                    "SELECT Title, Id, FileType, VersionData, ContentDocumentId FROM ContentVersion WHERE isLatest=true "
+                )["records"]
+            ]
+
+            self.logger.info(f"Number of files found: {len(available_files)}")
 
     def _build_mapping(self, include: str, ignore: str):
         self.logger.info(
@@ -377,6 +402,8 @@ class BackupData(BaseSalesforceApiTask):
             # else:
             #     self.logger.info(f"No records found for sObject {mapping['sf_object']}")
         else:
+            self.logger.error(f"Error querying {mapping['sf_object']}")
+            self.logger.error(f"SOQL Query: {soql}")
             raise BulkDataException(
                 f"Unable to execute query: {','.join(step.job_result.job_errors)}"
             )

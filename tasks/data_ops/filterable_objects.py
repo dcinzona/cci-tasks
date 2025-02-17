@@ -6,6 +6,7 @@ OPT_IN_ONLY = [
     "ApexClass",
     "ApexTrigger",
     "AppAnalyticsQueryRequest",
+    "AuraDefinition",
     "FeedItem",
     "Translation",
     "WebLinkLocalization",

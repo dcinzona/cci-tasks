@@ -56,7 +56,7 @@ class GenerateExtractMapping(GenerateMapping):
         self.logger.info("...Collecting SObject information")
 
         if any(self.options["include"]):
-           
+
             getObjectsTask = _make_task(
                 GetSObjects,
                 project_config=self.project_config,
@@ -175,9 +175,22 @@ class GenerateExtractMapping(GenerateMapping):
         for obj in self.mapping_objects:
             # self.logger.info(f"Processing {obj}")
             self.simple_schema[obj] = {}
+            compoundFields = set(
+                [
+                    f"{c}"
+                    for c in [
+                        field["compoundFieldName"]
+                        for field in org_schema[obj]["fields"].values()
+                        if field["compoundFieldName"]
+                        and field["compoundFieldName"] != "Name"
+                    ]
+                ]
+            )
+            # if len(list(compoundFields)) > 0:
+            #     self.logger.info(f"Compound fields ignored in {obj}: {[f for f in compoundFields]}")
 
             for field in org_schema[obj]["fields"].values():
-                if self._is_field_mappable(obj, field):
+                if self._is_field_mappable(obj, field, compoundFieldNames=compoundFields):
                     self.simple_schema[obj][field["name"]] = field
 
                     if field["type"] == "reference":
@@ -315,7 +328,8 @@ class GenerateExtractMapping(GenerateMapping):
         in this operation)."""
         return not any(
             [
-                field["compoundFieldName"] and field["compoundFieldName"] != "Name",
+                field["name"] in compoundFieldNames 
+                and field["name"] != "Name",
                 # field["name"] == "Id",  # Omit Id fields for auto-pks # we need record ids for extracts
                 f"{obj}.{field['name']}" in self.options["ignore"],  # User-ignored list
                 "(Deprecated)" in field["label"],  # Deprecated managed fields
