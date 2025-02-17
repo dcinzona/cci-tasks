@@ -2,14 +2,29 @@
 # tooling objects. i.e. any object which is both a tooling object
 # and also a "regular" sobject will be skipped.
 OPT_IN_ONLY = [
+    "ActionLinkGroupTemplate",
     "ApexClass",
     "ApexTrigger",
+    "AppAnalyticsQueryRequest",
     "FeedItem",
     "Translation",
     "WebLinkLocalization",
     "RecordTypeLocalization",
-    # "RecordType",
+    "ApexPage",
+    "ApexTestQueueItem",
+    "ApexTestResult",
+    "ApexComponent",
+    "ApexEmailNotification",
+    "ApexTestResultLimits",
+    "ApexTestRunResult",
+    "ApexTestSuite",
+    "AppMenuItem",
+    "AuthProvider",
     "BrandTemplate",
+    "OauthCustomScope",
+    "OauthCustomScopeApp",
+    "OauthTokenExchHandlerApp",
+    "OauthTokenExchangeHandler",
 ]
 
 NOT_COUNTABLE = (
@@ -97,7 +112,7 @@ def pattern_match_single(objname: str, pattern: str):
 
 
 def pattern_match(obj, patterns=NOT_EXTRACTABLE):
-    objname = obj if isinstance(obj, str) else obj['name']
+    objname = obj if isinstance(obj, str) else obj["name"]
     assert objname is not None, f"Object is not a dictionary or string: {obj}"
     objname = objname.lower()
 

@@ -102,9 +102,6 @@ def _merge_group_declarations_with_simple_declarations(
             already_specified = decl.sf_object in specific_sobject_decl_names
             if not already_specified:
                 simple_declarations.append(decl)
-            # hard_banned = any(
-            #     re.match(pat, decl.sf_object, re.IGNORECASE) for pat in NOT_EXTRACTABLE
-            # )
             opted_out = decl.sf_object in opt_in_only
             if not (already_specified or opted_out):
                 simple_declarations.append(decl)
@@ -219,12 +216,12 @@ def synthesize_declaration_for_sobject(
         )
         return ret
     else:
-        # if sf_object in NOT_EXTRACTABLE:
+        # if sf_object in OPT_IN_ONLY:
         #     fields = [f["name"] for f in schema_fields.values() if not f["nillable"]] or ["Id"]
-        #     # fields = ["Id"]
-        #     # raise ValueError(
-        #     #     f"Cannot extract {sf_object} because it is not extractable.\n Required fields: {fields}"
-        #     # )
+        # fields = ["Id"]
+        # raise ValueError(
+        #     f"Cannot extract {sf_object} because it is not extractable.\n Required fields: {fields}"
+        # )
         return SimplifiedExtractDeclaration(sf_object=sf_object, fields=fields)
 
 

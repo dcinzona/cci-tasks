@@ -27,8 +27,8 @@ tasks:
         class_path: tasks.update_help_text.UpdateHelpText
         group: Metadata Operations
 
-    generate_full_mapping:
-        class_path: tasks.data_ops.generate_full_mapping.GenerateFullMapping
+    generate_extract_mapping:
+        class_path: tasks.data_ops.generate_extract_mapping.GenerateExtractMapping
         group: Data Operations
     
     list_sobjects:

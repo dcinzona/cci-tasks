@@ -3,7 +3,9 @@ import yaml
 import copy
 
 from tasks.data_ops.overrides import init_overrides
-from tasks.data_ops.filterable_objects import NOT_EXTRACTABLE, sobject_is_valid
+from tasks.data_ops.get_sobjects import GetSObjects
+from cumulusci.core.datasets import _make_task  # , Dataset
+from tasks.data_ops.filterable_objects import NOT_EXTRACTABLE, sobject_is_valid, OPT_IN_ONLY
 from cumulusci.salesforce_api.org_schema import Filters, get_org_schema
 from cumulusci.tasks.bulkdata.generate_mapping import GenerateMapping
 from cumulusci.core.utils import process_bool_arg, process_list_arg
@@ -16,14 +18,14 @@ generate_options["exclude_setup_objects"] = {
 }
 
 
-class GenerateFullMapping(GenerateMapping):
+class GenerateExtractMapping(GenerateMapping):
 
     task_options = generate_options
     exclude_setup_objects = True
 
     def _init_options(self, kwargs):
         init_overrides()
-        super(GenerateFullMapping, self)._init_options(kwargs)
+        super(GenerateExtractMapping, self)._init_options(kwargs)
 
         if "namespace_prefix" not in self.options:
             self.options["namespace_prefix"] = ""
@@ -50,9 +52,21 @@ class GenerateFullMapping(GenerateMapping):
         )
 
     def _run_task(self):
-        self.logger.info("Running GenerateFullMapping\n")
+        self.logger.info("Running GenerateExtractMapping\n")
         self.logger.info("...Collecting SObject information")
-        self.sobjects = [f["name"] for f in self.sf.describe()["sobjects"]]
+
+        if any(self.options["include"]):
+           
+            getObjectsTask = _make_task(
+                GetSObjects,
+                project_config=self.project_config,
+                org_config=self.org_config,
+                include_tooling=False,
+            )
+            self.valid_objects = getObjectsTask()
+            self.sobjects = set({f["name"] for f in self.valid_objects})
+        else:
+            self.sobjects = [f["name"] for f in self.sf.describe()["sobjects"]]
         self.logger.info("...Collecting Tooling Object information")
         self.toolingObjects = [f['name'] for f in self.tooling.describe()["sobjects"]]
         self.not_extractable = [f for f in NOT_EXTRACTABLE] + self.options["ignore"]
@@ -79,7 +93,8 @@ class GenerateFullMapping(GenerateMapping):
             org_config=self.org_config,
             include_counts=False,
             included_objects=self.valid_schema_objects,
-            filters=[Filters.queryable, Filters.createable],
+            filters=[Filters.retrieveable, Filters.updateable],
+            # patterns_to_ignore=self.not_extractable,
             force_recache=False,
         ) as org_schema:
             self.valid_schema_objects = set(org_schema.keys())
@@ -121,18 +136,6 @@ class GenerateFullMapping(GenerateMapping):
                 if obj is not None and self._is_object_mappable(obj) and objname not in self.mapping_objects:
                     self.mapping_objects.append(objname)
             return
-        # else:  # Let's find objects that we require
-        #     for obj in self.mapping_objects:
-        #         for field in org_schema[obj].fields.values():
-        #             if field["type"] == "reference":
-        #                 new_objects = [
-        #                     obj
-        #                     for obj in field["referenceTo"]
-        #                     if obj not in self.mapping_objects and obj in self.valid_schema_objects
-        #                 ]
-        #                 if any(new_objects):
-        #                     self.logger.info(f"Adding {new_objects} for {obj}.{field['name']}")
-        #                     self.mapping_objects.extend(new_objects)
 
         # Add any objects that are required by our own,
         # meaning any object we are looking up to with a custom field,
@@ -148,7 +151,9 @@ class GenerateFullMapping(GenerateMapping):
                     new_objects = [
                         obj
                         for obj in field["referenceTo"]
-                        if obj not in self.mapping_objects and obj in self.valid_schema_objects
+                        if obj not in self.mapping_objects 
+                        and obj in self.valid_schema_objects 
+                        and obj not in OPT_IN_ONLY
                     ]
                     if any(new_objects):                                
                         self.logger.info(f"Adding {new_objects} for {obj}.{field['name']}")
@@ -166,6 +171,7 @@ class GenerateFullMapping(GenerateMapping):
         self.refs = defaultdict(lambda: defaultdict(dict))
 
         # ignorelist = [f["name"] for f in self.tooling.describe()["sobjects"] if f["name"] not in ["User", "Group"]]
+        opt_in_only = tuple(OPT_IN_ONLY)
         for obj in self.mapping_objects:
             # self.logger.info(f"Processing {obj}")
             self.simple_schema[obj] = {}
@@ -178,7 +184,7 @@ class GenerateFullMapping(GenerateMapping):
                         for target in field["referenceTo"]:
                             # We've already vetted that this field is referencing
                             # included objects, via `_is_field_mappable()`
-                            if target != obj and target not in ("User", "Group"):
+                            if target != obj and target not in ("User", "Group") + opt_in_only:
                                 self.refs[obj][target][field["name"]] = field
 
                 if (

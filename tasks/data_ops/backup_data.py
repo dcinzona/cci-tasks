@@ -6,10 +6,9 @@ import typing as T
 
 from tasks.data_ops.filterable_objects import (
     OPT_IN_ONLY,
-    # sobject_is_valid,
 )
 
-from tasks.data_ops.generate_full_mapping import GenerateFullMapping
+from tasks.data_ops.generate_extract_mapping import GenerateExtractMapping
 from tasks.data_ops.get_sobjects import GetSObjects
 from tasks.data_ops.extract_dataset_utils.synthesize_extract_declarations import (
     flatten_declarations,
@@ -151,12 +150,12 @@ class BackupData(BaseSalesforceApiTask):
             project_config=self.project_config,
             org_config=self.org_config,
             include_tooling=self.include_setup_data,
-            filters="queryable,createable",
+            filters="retrieveable,updateable",
         )
         self.valid_objects = getObjectsTask()
         self.valid_object_names = set({f["name"] for f in self.valid_objects})
 
-        filters = [Filters.queryable, Filters.createable]
+        filters = [Filters.retrieveable, Filters.updateable]
         if self.populated_only:
             filters.append(Filters.populated)
 
@@ -288,7 +287,7 @@ class BackupData(BaseSalesforceApiTask):
         if len(decls.keys()) == len(self.valid_object_names):
             self.logger.info("   (All objects are included)")
             return dict(pair for pair in decls.items())
-        
+
         # explode group declarations
         self.logger.info("...flatten_declarations")
         simplified_decls = flatten_declarations(decls.values(), schema, OPT_IN_ONLY)
@@ -310,20 +309,6 @@ class BackupData(BaseSalesforceApiTask):
         self.logger.info(" *** No data will be extracted. *** \n") if not self.execute else None
         lb = "-" * 80
         lb = f"\n{lb}\n"
-
-        # if self.preview:
-        #     if self.sobjects:
-        #         decls = {
-        #             k: {vk: vv for vk, vv in v if vk in ("sf_object", "fields")}
-        #             for k, v in self.mapping.items()
-        #         }
-        #         import yaml
-        #         self.logger.info(f"\nExtraction Definition:{lb}")
-        #         self.logger.info(yaml.safe_dump(decls))
-        #     else:
-        #         self.logger.info(
-        #             f"\nExtraction Definition:{lb}{self.extraction_definition.read_text()}\n"
-        #         )
 
         self.logger.info(f"\nSUMMARY{lb}")
 
@@ -348,7 +333,7 @@ class BackupData(BaseSalesforceApiTask):
             "...Getting related objects and building mapping file for extract"
         )
         mappingTask = _make_task(
-            GenerateFullMapping,
+            GenerateExtractMapping,
             project_config=self.project_config,
             org_config=self.org_config,
             logger=self.logger,
@@ -467,7 +452,7 @@ class BackupData(BaseSalesforceApiTask):
                             "User",
                             "Group",
                             "RecordType",
-                        )  # everything looks up to these objects so we exclude them
+                        ) + OPT_IN_ONLY  # everything looks up to these objects so we exclude them
                         and x in self.valid_object_names  # make sure we can retrieve the target object
                         and (
                             x in base_objects  # or x in mapped_objects
@@ -477,7 +462,7 @@ class BackupData(BaseSalesforceApiTask):
             ]
 
             for field in reference_fields:
-                if obj not in base_objects and obj not in referenced_objects:
+                if obj not in base_objects and obj not in referenced_objects and obj not in OPT_IN_ONLY:
                     referenced_objects.append(obj)
                     decls[obj] = ExtractDeclaration(
                         sf_object=obj
